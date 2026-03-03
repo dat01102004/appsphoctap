@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+
 import '../../widgets/loading_overlay.dart';
 import '../../widgets/result_card.dart';
 import '../../core/tts/tts_service.dart';
@@ -19,11 +20,25 @@ class _OcrScreenState extends State<OcrScreen> {
   @override
   void initState() {
     super.initState();
-    context.read<TtsService>().speak("Màn hình OCR. Chọn ảnh để trích xuất văn bản.");
+    context.read<TtsService>().speak("Màn hình quét chữ. Bạn có thể chụp ảnh hoặc chọn ảnh.");
   }
 
-  Future<void> pickAndOcr() async {
-    final img = await _picker.pickImage(source: ImageSource.gallery);
+  Future<void> cameraOcr() async {
+    final img = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
+      maxWidth: 1280,
+    );
+    if (img == null) return;
+    await context.read<OcrController>().runOcr(img.path);
+  }
+
+  Future<void> galleryOcr() async {
+    final img = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+      maxWidth: 1280,
+    );
     if (img == null) return;
     await context.read<OcrController>().runOcr(img.path);
   }
@@ -33,20 +48,30 @@ class _OcrScreenState extends State<OcrScreen> {
     final c = context.watch<OcrController>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("OCR ảnh")),
+      appBar: AppBar(title: const Text("Quét chữ (OCR)")),
       body: Stack(
         children: [
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
               SizedBox(
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: c.loading ? null : pickAndOcr,
-                  child: const Text("Chọn ảnh & OCR"),
+                height: 54,
+                child: ElevatedButton.icon(
+                  onPressed: c.loading ? null : cameraOcr,
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Text("Chụp ảnh để quét"),
                 ),
               ),
               const SizedBox(height: 12),
+              SizedBox(
+                height: 54,
+                child: OutlinedButton.icon(
+                  onPressed: c.loading ? null : galleryOcr,
+                  icon: const Icon(Icons.photo),
+                  label: const Text("Chọn ảnh từ thư viện"),
+                ),
+              ),
+              const SizedBox(height: 16),
               ResultCard(
                 title: "Kết quả OCR",
                 content: c.text,
