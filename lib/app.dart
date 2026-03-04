@@ -1,82 +1,71 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'core/theme/app_theme.dart';
 import 'core/tts/tts_service.dart';
-import 'data/services/storage_service.dart';
 import 'data/services/api_client.dart';
 import 'data/services/auth_api.dart';
-import 'data/services/vision_api.dart';
-import 'data/services/read_api.dart';
 import 'data/services/history_api.dart';
+import 'data/services/read_api.dart';
+import 'data/services/storage_service.dart';
+import 'data/services/vision_api.dart';
 
-import 'features/home/home_screen.dart';
 import 'features/auth/auth_controller.dart';
-import 'features/read_url/read_url_controller.dart';
-import 'features/ocr/ocr_controller.dart';
 import 'features/caption/caption_controller.dart';
 import 'features/history/history_controller.dart';
+import 'features/home/home_screen.dart';
+import 'features/ocr/ocr_controller.dart';
+import 'features/read_url/read_url_controller.dart';
+import 'features/voice/voice_controller.dart';
 
 class TalkSightApp extends StatelessWidget {
   const TalkSightApp({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final storage = StorageService();
+    final client = ApiClient(storage);
+
+    final tts = TtsService()..init();
+
+    final authApi = AuthApi(client);
+    final visionApi = VisionApi(client);
+    final readApi = ReadApi(client);
+    final historyApi = HistoryApi(client);
+
     return MultiProvider(
       providers: [
-        Provider(create: (_) => TtsService()..init()),
-        Provider(create: (_) => StorageService()),
-        ProxyProvider<StorageService, ApiClient>(
-          update: (_, storage, __) => ApiClient(storage),
-        ),
-        ProxyProvider<ApiClient, AuthApi>(
-          update: (_, client, __) => AuthApi(client),
-        ),
-        ProxyProvider<ApiClient, VisionApi>(
-          update: (_, client, __) => VisionApi(client),
-        ),
-        ProxyProvider<ApiClient, ReadApi>(
-          update: (_, client, __) => ReadApi(client),
-        ),
-        ProxyProvider<ApiClient, HistoryApi>(
-          update: (_, client, __) => HistoryApi(client),
-        ),
+        Provider.value(value: storage),
+        Provider.value(value: client),
+        Provider.value(value: tts),
 
-        ChangeNotifierProxyProvider3<AuthApi, StorageService, TtsService, AuthController>(
-          create: (_) => AuthController(
-            AuthApi(ApiClient(StorageService())),
-            StorageService(),
-            TtsService(),
-          ),
-          update: (_, authApi, storage, tts, __) {
-            final c = AuthController(authApi, storage, tts);
-            c.init(); // auto-check token
-            return c;
-          },
-        ),
+        Provider.value(value: authApi),
+        Provider.value(value: visionApi),
+        Provider.value(value: readApi),
+        Provider.value(value: historyApi),
 
-        ChangeNotifierProxyProvider2<ReadApi, TtsService, ReadUrlController>(
-          create: (_) => ReadUrlController(ReadApi(ApiClient(StorageService())), TtsService()),
-          update: (_, api, tts, __) => ReadUrlController(api, tts),
+        ChangeNotifierProvider(
+          create: (_) => AuthController(authApi, storage, tts)..init(),
         ),
-        ChangeNotifierProxyProvider2<VisionApi, TtsService, OcrController>(
-          create: (_) => OcrController(VisionApi(ApiClient(StorageService())), TtsService()),
-          update: (_, api, tts, __) => OcrController(api, tts),
+        ChangeNotifierProvider(
+          create: (_) => ReadUrlController(readApi, tts),
         ),
-        ChangeNotifierProxyProvider2<VisionApi, TtsService, CaptionController>(
-          create: (_) => CaptionController(VisionApi(ApiClient(StorageService())), TtsService()),
-          update: (_, api, tts, __) => CaptionController(api, tts),
+        ChangeNotifierProvider(
+          create: (_) => OcrController(visionApi, tts),
         ),
-        ChangeNotifierProxyProvider2<HistoryApi, TtsService, HistoryController>(
-          create: (_) => HistoryController(HistoryApi(ApiClient(StorageService())), TtsService()),
-          update: (_, api, tts, __) => HistoryController(api, tts),
+        ChangeNotifierProvider(
+          create: (_) => CaptionController(visionApi, tts),
         ),
+        ChangeNotifierProvider(
+          create: (_) => HistoryController(historyApi, tts),
+        ),
+        ChangeNotifierProvider(
+            create: (_) => VoiceController()),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: "TalkSight",
-        theme: ThemeData(
-          useMaterial3: true,
-        ),
+        theme: AppTheme.light(),
         home: const HomeScreen(),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../data/models/history_models.dart';
 import '../../data/services/history_api.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/errors/error_utils.dart';
 
 class HistoryController extends ChangeNotifier {
   final HistoryApi api;
@@ -9,15 +10,19 @@ class HistoryController extends ChangeNotifier {
 
   bool loading = false;
   List<HistoryItem> items = [];
+  String? lastError;
 
   HistoryController(this.api, this.tts);
 
-  Future<void> load() async {
+  Future<void> load({String? type, int limit = 100}) async {
     loading = true;
+    lastError = null;
     notifyListeners();
     try {
-      items = await api.list(limit: 100);
-      await tts.speak("Đã tải lịch sử.");
+      items = await api.list(type: type, limit: limit);
+    } catch (e) {
+      lastError = ErrorUtils.message(e);
+      await tts.speak(lastError!);
     } finally {
       loading = false;
       notifyListeners();
@@ -25,9 +30,16 @@ class HistoryController extends ChangeNotifier {
   }
 
   Future<void> remove(int id) async {
-    await api.delete(id);
-    items.removeWhere((e) => e.id == id);
-    notifyListeners();
-    await tts.speak("Đã xoá mục lịch sử.");
+    try {
+      await api.delete(id);
+      items.removeWhere((e) => e.id == id);
+      notifyListeners();
+      await tts.speak("Đã xoá mục lịch sử.");
+    } catch (e) {
+      final msg = ErrorUtils.message(e);
+      await tts.speak(msg);
+    }
   }
+
+  Future<void> speakItem(String text) => tts.speak(text);
 }

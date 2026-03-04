@@ -6,11 +6,18 @@ class HistoryApi {
   HistoryApi(this.client);
 
   Future<List<HistoryItem>> list({String? type, int limit = 50}) async {
-    final res = await client.dio.get("/history", queryParameters: {
-      if (type != null) "type": type,
-      "limit": limit,
-    });
-    final items = (res.data["items"] as List).map((e) => HistoryItem.fromJson(e)).toList();
+    final res = await client.dio.get(
+      "/history",
+      queryParameters: {
+        if (type != null) "type": type,
+        "limit": limit,
+      },
+    );
+
+    final items = (res.data["items"] as List)
+        .map((e) => HistoryItem.fromJson(e))
+        .toList();
+
     return items;
   }
 

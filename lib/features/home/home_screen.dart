@@ -1,13 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/errors/error_utils.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_icons.dart';
 import '../../core/tts/tts_service.dart';
-import '../auth/auth_controller.dart';
-import '../auth/login_screen.dart';
-import '../history/history_screen.dart';
-import '../ocr/ocr_screen.dart';
+import '../../core/widgets/app_icon.dart';
+import '../../data/services/vision_api.dart';
+
 import '../caption/caption_screen.dart';
+import '../ocr/ocr_screen.dart';
 import '../read_url/read_url_screen.dart';
+import '../vision/vision_result_screen.dart';
+import '../voice/voice_controller.dart';
+
+import 'tabs/history_tab.dart';
+import 'tabs/home_tab.dart';
+import 'tabs/settings_tab.dart';
+import 'tabs/tasks_tab.dart';
+import 'widgets/talksight_app_bar.dart';
+import 'widgets/talksight_bottom_bar.dart';
+
+enum VisionMode { ocr, caption }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,276 +33,252 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const _brown = Color(0xFF8B6A2B);
-  static const _bg = Color(0xFFF4EFE6);
+  final _picker = ImagePicker();
+  int _index = 0;
+  bool _loading = false;
+  bool _greeted = false;
 
   @override
-  void initState() {
-    super.initState();
-    context.read<TtsService>().speak("TalkSight. Chọn chức năng hoặc bấm nút camera để chụp và quét.");
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_greeted) return;
+    _greeted = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final tts = context.read<TtsService>();
+      await tts.speak(
+        "Xin chào bạn! Hôm nay bạn muốn sử dụng tính năng gì? "
+            "Bạn có thể nói: quét chữ, mô tả ảnh, đọc web, lịch sử, cài đặt, tác vụ, chụp nhanh.",
+      );
+
+      // Sau khi chào thì tự bắt đầu nghe 1 lượt
+      await _startVoiceOnce();
+    });
   }
 
-  void _openLogin() => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-  void _openHistory(AuthController auth) {
-    if (!auth.loggedIn) {
-      context.read<TtsService>().speak("Bạn cần đăng nhập để xem lịch sử.");
-      _openLogin();
+  Future<void> _startVoiceOnce() async {
+    final voice = context.read<VoiceController>();
+    final tts = context.read<TtsService>();
+
+    await voice.start(onFinal: (text) async {
+      if (text.isEmpty) {
+        await tts.speak("Mình chưa nghe rõ. Bạn nói lại giúp mình nhé.");
+        return _startVoiceOnce();
+      }
+      await _handleVoiceCommand(text);
+    });
+  }
+
+  Future<void> _toggleMic() async {
+    final voice = context.read<VoiceController>();
+    if (voice.isListening) {
+      await voice.stop();
+    } else {
+      await _startVoiceOnce();
+    }
+  }
+
+  Future<void> _handleVoiceCommand(String raw) async {
+    final voice = context.read<VoiceController>();
+    final tts = context.read<TtsService>();
+
+    // tránh nghe lại chính tiếng TTS
+    await voice.stop();
+
+    final text = raw.toLowerCase();
+
+    // Điều hướng tab
+    if (text.contains("lịch sử")) {
+      setState(() => _index = 1);
+      return tts.speak("Mở lịch sử.");
+    }
+    if (text.contains("tác vụ")) {
+      setState(() => _index = 2);
+      return tts.speak("Mở tác vụ.");
+    }
+    if (text.contains("cài đặt") || text.contains("setting")) {
+      setState(() => _index = 3);
+      return tts.speak("Mở cài đặt.");
+    }
+    if (text.contains("home") || text.contains("trang chủ")) {
+      setState(() => _index = 0);
+      return tts.speak("Về trang chủ.");
+    }
+
+    // Mở màn chức năng
+    if (text.contains("quét") || text.contains("o c r") || text.contains("ocr")) {
+      tts.speak("Mở quét chữ.");
+      if (!mounted) return;
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const OcrScreen()));
       return;
     }
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen()));
+
+    if (text.contains("mô tả") || text.contains("caption")) {
+      tts.speak("Mở mô tả ảnh.");
+      if (!mounted) return;
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const CaptionScreen()));
+      return;
+    }
+
+    if (text.contains("đọc web") || text.contains("url") || text.contains("đọc u r l")) {
+      tts.speak("Mở đọc web. Bạn dán URL rồi nhấn đọc nhé.");
+      if (!mounted) return;
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadUrlScreen()));
+      return;
+    }
+
+    if (text.contains("chụp") || text.contains("camera")) {
+      tts.speak("Mở camera.");
+      return _onCameraPressed();
+    }
+
+    await tts.speak("Mình chưa hiểu lệnh. Bạn thử nói: quét chữ, mô tả ảnh, đọc web, hoặc chụp nhanh.");
+    return _startVoiceOnce();
   }
 
-  Future<void> _openCameraActionSheet() async {
-    // Bấm nút camera -> hỏi người dùng muốn OCR hay Caption
-    final choice = await showModalBottomSheet<String>(
+  Future<void> _onCameraPressed() async {
+    // ✅ Bấm là mở camera ngay
+    final cam = await Permission.camera.request();
+    if (!cam.isGranted) {
+      final msg = "Bạn cần cấp quyền camera để chụp ảnh.";
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      return context.read<TtsService>().speak(msg);
+    }
+
+    final img = await _picker.pickImage(source: ImageSource.camera, imageQuality: 88);
+    if (img == null) return;
+
+    // Sau khi chụp xong mới hỏi chọn OCR/Caption
+    if (!mounted) return;
+    _openAfterShotSheet(img.path);
+  }
+
+  void _openAfterShotSheet(String imagePath) {
+    showModalBottomSheet(
       context: context,
       showDragHandle: true,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(Icons.document_scanner),
-              title: const Text("Chụp để quét chữ (OCR)"),
-              onTap: () => Navigator.pop(context, "ocr"),
-            ),
-            ListTile(
-              leading: const Icon(Icons.image),
-              title: const Text("Chụp để mô tả ảnh"),
-              onTap: () => Navigator.pop(context, "caption"),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const AppIcon(AppIcons.ocr, size: 24, color: AppColors.brandBrown),
+                title: const Text("Quét chữ (OCR)"),
+                onTap: () {
+                  Navigator.pop(context);
+                  _processImage(imagePath, VisionMode.ocr);
+                },
+              ),
+              ListTile(
+                leading: const AppIcon(AppIcons.image, size: 24, color: AppColors.brandBrown),
+                title: const Text("Mô tả ảnh (Caption)"),
+                onTap: () {
+                  Navigator.pop(context);
+                  _processImage(imagePath, VisionMode.caption);
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
     );
-
-    if (!mounted || choice == null) return;
-    if (choice == "ocr") {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const OcrScreen()));
-    } else if (choice == "caption") {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const CaptionScreen()));
-    }
   }
 
-  Widget _tile({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Semantics(
-      button: true,
-      label: title,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 54, color: _brown),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-              ),
-              if (subtitle != null) ...[
-                const SizedBox(height: 6),
-                Text(subtitle, textAlign: TextAlign.center),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
+  Future<void> _processImage(String path, VisionMode mode) async {
+    setState(() => _loading = true);
+    final api = context.read<VisionApi>();
+    final tts = context.read<TtsService>();
+
+    try {
+      if (mode == VisionMode.ocr) {
+        final res = await api.ocr(path);
+        setState(() => _loading = false);
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => VisionResultScreen(title: "Kết quả OCR", content: res.text)),
+        );
+      } else {
+        final res = await api.caption(path);
+        setState(() => _loading = false);
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => VisionResultScreen(title: "Kết quả mô tả ảnh", content: res.caption)),
+        );
+      }
+    } catch (e) {
+      setState(() => _loading = false);
+      final msg = ErrorUtils.message(e);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      await tts.speak(msg);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthController>();
+    final voice = context.watch<VoiceController>();
+
+    final pages = [
+      HomeTab(onOpenCameraSheet: _onCameraPressed), // ✅ tile “Chụp nhanh” cũng mở camera ngay
+      const HistoryTab(),
+      const TasksTab(),
+      const SettingsTab(),
+    ];
 
     return Scaffold(
-      backgroundColor: _bg,
-      appBar: AppBar(
-        backgroundColor: _brown,
-        foregroundColor: Colors.white,
-        centerTitle: true,
-        title: const Text(
-          "TALKSIGHT",
-          style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.w900),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.mic),
-          onPressed: () => context.read<TtsService>().speak("Tính năng giọng nói sẽ tích hợp sau."),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.chat_bubble_outline),
-            onPressed: () => context.read<TtsService>().speak("Bạn có thể quét chữ, mô tả ảnh hoặc đọc web."),
-          ),
-        ],
+      extendBody: true,
+      appBar: TalkSightAppBar(
+        isListening: voice.isListening,
+        onMicPressed: _toggleMic,
       ),
-
-      // FAB camera ở giữa
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: _brown,
-        onPressed: _openCameraActionSheet,
-        child: const Icon(Icons.camera_alt, color: Colors.white),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-
-      bottomNavigationBar: BottomAppBar(
-        notchMargin: 8,
-        shape: const CircularNotchedRectangle(),
-        color: const Color(0xFFE6DED1),
-        child: SizedBox(
-          height: 72,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              IconButton(
-                tooltip: "Home",
-                icon: const Icon(Icons.home),
-                onPressed: () => context.read<TtsService>().speak("Trang chủ"),
-              ),
-              IconButton(
-                tooltip: "Lịch sử",
-                icon: const Icon(Icons.menu_book),
-                onPressed: () => _openHistory(auth),
-              ),
-              const SizedBox(width: 42), // chừa chỗ cho FAB
-              IconButton(
-                tooltip: "Tác vụ",
-                icon: const Icon(Icons.list_alt),
-                onPressed: () => context.read<TtsService>().speak("Tác vụ. Bạn sẽ bổ sung sau."),
-              ),
-              IconButton(
-                tooltip: "Cài đặt",
-                icon: const Icon(Icons.settings),
-                onPressed: () => context.read<TtsService>().speak("Cài đặt. Bạn sẽ bổ sung sau."),
-              ),
-            ],
-          ),
-        ),
-      ),
-
-      body: ListView(
-        padding: const EdgeInsets.all(18),
+      body: Stack(
         children: [
-          // Khối trạng thái như thiết kế (Guest mode + thông tin)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: const [
-                    Icon(Icons.mic, color: _brown),
-                    SizedBox(width: 10),
-                    Text(
-                      "Mic đang nghe",
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: _brown),
+          SafeArea(child: IndexedStack(index: _index, children: pages)),
+          if (_loading)
+            Container(
+              color: Colors.black45,
+              child: const Center(
+                child: Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(18),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(width: 12),
+                        Text("Đang xử lý..."),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: _brown,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          auth.loggedIn ? "Logged In" : "Guest Mode",
-                          style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DefaultTextStyle(
-                          style: const TextStyle(color: Colors.white, fontSize: 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text("Tốc độ đọc: Vừa"),
-                              const Text("Giọng đọc: vi-VN"),
-                              Text("Lịch sử: ${auth.loggedIn ? "Có" : "Không"}"),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-
-          const SizedBox(height: 18),
-
-          // Grid 2x2 như thiết kế
-          GridView.count(
-            crossAxisCount: 2,
-            mainAxisSpacing: 14,
-            crossAxisSpacing: 14,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              _tile(
-                icon: Icons.document_scanner,
-                title: "Quét chữ",
-                subtitle: "(ocr)",
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OcrScreen())),
-              ),
-              _tile(
-                icon: Icons.image,
-                title: "Mô tả ảnh",
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CaptionScreen())),
-              ),
-              _tile(
-                icon: Icons.radio,
-                title: "Đọc web",
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadUrlScreen())),
-              ),
-              _tile(
-                icon: Icons.person,
-                title: "Đăng nhập",
-                subtitle: "(Đăng nhập để lưu lại lịch sử)",
-                onTap: () {
-                  if (auth.loggedIn) {
-                    context.read<TtsService>().speak("Bạn đã đăng nhập. Bấm để đăng xuất.");
-                    auth.logout();
-                  } else {
-                    _openLogin();
-                  }
-                },
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 90), // chừa khoảng cho bottom bar
         ],
+      ),
+
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: SizedBox(
+        width: 70, // ✅ lớn hơn chút
+        height: 70,
+        child: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 6),
+          ),
+          child: FloatingActionButton(
+            backgroundColor: AppColors.brandBrown,
+            onPressed: _onCameraPressed, // ✅ bấm là mở camera ngay
+            child: const AppIcon(AppIcons.camera, color: Colors.white, size: 30),
+          ),
+        ),
+      ),
+
+      bottomNavigationBar: TalkSightBottomBar(
+        currentIndex: _index,
+        onTap: (i) => setState(() => _index = i),
       ),
     );
   }
