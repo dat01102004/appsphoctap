@@ -15,9 +15,12 @@ class HistoryController extends ChangeNotifier {
   HistoryController(this.api, this.tts);
 
   Future<void> load({String? type, int limit = 100}) async {
+    if (loading) return; // ✅ đặt ngay đầu hàm
+
     loading = true;
     lastError = null;
     notifyListeners();
+
     try {
       items = await api.list(type: type, limit: limit);
     } catch (e) {

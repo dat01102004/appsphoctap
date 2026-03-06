@@ -9,6 +9,9 @@ class VoiceController extends ChangeNotifier {
   bool isListening = false;
   String lastWords = "";
 
+  String _localeId = "vi_VN";
+  double soundLevel = 0;
+
   Future<void> init() async {
     if (initialized) return;
 
@@ -19,10 +22,24 @@ class VoiceController extends ChangeNotifier {
       return;
     }
 
-    await _stt.initialize(
-      onStatus: (s) {},
-      onError: (e) {},
+    final ok = await _stt.initialize(
+      onStatus: (_) {},
+      onError: (_) {},
     );
+
+    if (ok) {
+      // chọn locale vi_* nếu có
+      try {
+        final locales = await _stt.locales();
+        final vi = locales.where((l) => l.localeId.toLowerCase().startsWith("vi")).toList();
+        if (vi.isNotEmpty) {
+          _localeId = vi.first.localeId; // thường là vi_VN
+        } else {
+          final sys = await _stt.systemLocale();
+          if (sys != null) _localeId = sys.localeId;
+        }
+      } catch (_) {}
+    }
 
     initialized = true;
     notifyListeners();
@@ -34,16 +51,29 @@ class VoiceController extends ChangeNotifier {
     await init();
     if (!_stt.isAvailable) return;
 
+    // reset
     lastWords = "";
+    soundLevel = 0;
+
+    // tránh trường hợp đang listen dở
+    await _stt.stop();
+
+    // delay nhỏ để tránh cắt đầu câu (rất hay gặp)
+    await Future.delayed(const Duration(milliseconds: 250));
+
     isListening = true;
     notifyListeners();
 
     await _stt.listen(
-      localeId: 'vi_VN',
-      listenMode: ListenMode.confirmation,
+      localeId: _localeId,
+      listenMode: ListenMode.dictation,
       partialResults: true,
-      listenFor: const Duration(seconds: 6),
-      pauseFor: const Duration(seconds: 1),
+      listenFor: const Duration(seconds: 10),
+      pauseFor: const Duration(seconds: 2),
+      onSoundLevelChange: (lvl) {
+        soundLevel = lvl;
+        notifyListeners();
+      },
       onResult: (res) {
         lastWords = res.recognizedWords;
         notifyListeners();

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../auth/auth_controller.dart';
 import '../../auth/login_screen.dart';
@@ -14,24 +15,28 @@ class HistoryTab extends StatefulWidget {
 
 class _HistoryTabState extends State<HistoryTab> {
   String? _type; // null=all, "ocr", "caption", "read_url"
+  bool _requestedInitialLoad = false;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final auth = context.read<AuthController>();
-    if (auth.loggedIn) {
+  Widget build(BuildContext context) {
+    // dùng select để chỉ rebuild khi loggedIn đổi
+    final loggedIn = context.select<AuthController, bool>((a) => a.loggedIn);
+    final c = context.watch<HistoryController>();
+
+    // ✅ chỉ gọi load 1 lần khi đã login và chưa load lần đầu
+    if (loggedIn && !_requestedInitialLoad) {
+      _requestedInitialLoad = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         context.read<HistoryController>().load(type: _type);
       });
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
-    final auth = context.watch<AuthController>();
-    final c = context.watch<HistoryController>();
+    // nếu logout thì reset để lần login sau load lại
+    if (!loggedIn && _requestedInitialLoad) {
+      _requestedInitialLoad = false;
+    }
 
-    if (!auth.loggedIn) {
+    if (!loggedIn) {
       return Padding(
         padding: const EdgeInsets.all(16),
         child: Card(
@@ -71,22 +76,42 @@ class _HistoryTabState extends State<HistoryTab> {
         Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                _chip("Tất cả", null),
-                const SizedBox(width: 8),
-                _chip("Quét chữ", "ocr"),
-                const SizedBox(width: 8),
-                _chip("Mô tả ảnh", "caption"),
-                const SizedBox(width: 8),
-                _chip("Đọc web", "read_url"),
-              ],
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _chip("Tất cả", null),
+                  const SizedBox(width: 8),
+                  _chip("Quét chữ", "ocr"),
+                  const SizedBox(width: 8),
+                  _chip("Mô tả ảnh", "caption"),
+                  const SizedBox(width: 8),
+                  _chip("Đọc báo", "read_url"),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: "Tải lại",
+                    onPressed: () => context.read<HistoryController>().load(type: _type),
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
         const SizedBox(height: 10),
+
         if (c.loading)
-          const Center(child: Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator()))
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(18),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (c.items.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text("Chưa có lịch sử."),
+          )
         else
           ...c.items.map((it) {
             final preview = it.resultText.trim().replaceAll("\n", " ");
