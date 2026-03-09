@@ -20,6 +20,7 @@ import 'features/ocr/ocr_controller.dart';
 import 'features/read_url/read_url_controller.dart';
 import 'features/voice/voice_controller.dart';
 import 'features/news/news_assistant_controller.dart';
+import 'features/player/player_controller.dart';
 
 class TalkSightApp extends StatelessWidget {
   const TalkSightApp({super.key});
@@ -61,7 +62,7 @@ class TalkSightApp extends StatelessWidget {
             ctx.read<VoiceController>(),
           ),
         ),
-
+        ChangeNotifierProvider(create: (_) => PlayerController()),
         ChangeNotifierProvider(
           create: (_) => AuthController(authApi, storage, tts)..init(),
         ),

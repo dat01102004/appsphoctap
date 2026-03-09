@@ -13,8 +13,6 @@ import '../../ocr/ocr_screen.dart';
 
 class HomeTab extends StatelessWidget {
   final VoidCallback onOpenCameraSheet;
-
-  // ✅ mic state + action
   final bool isListening;
   final String lastWords;
   final VoidCallback onMicTap;
@@ -69,10 +67,12 @@ class HomeTab extends StatelessWidget {
         ? (lastWords.trim().isEmpty ? "..." : lastWords)
         : "Bạn có thể nói: đọc báo, quét chữ, mô tả ảnh, chụp nhanh";
 
+    final displayName = auth.loggedIn ? (auth.email ?? "Người dùng") : "Khách";
+    final historyText = auth.loggedIn ? "Lịch sử: Đang lưu trữ" : "Lịch sử: Không lưu trữ";
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // ✅ MIC STATUS CARD (tap để bật/tắt)
         Card(
           child: InkWell(
             borderRadius: BorderRadius.circular(22),
@@ -81,43 +81,25 @@ class HomeTab extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               child: Row(
                 children: [
-                  Icon(
-                    isListening ? Icons.mic : Icons.mic_none,
-                    color: AppColors.brandBrown,
-                  ),
+                  Icon(isListening ? Icons.mic : Icons.mic_none, color: AppColors.brandBrown),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          micTitle,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                        Text(micTitle, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                         const SizedBox(height: 3),
-                        Text(
-                          micSub,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.black54),
-                        ),
+                        Text(micSub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black54)),
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Icon(
-                    isListening ? Icons.stop_circle_outlined : Icons.play_circle_outline,
-                    color: Colors.black45,
-                  ),
+                  Icon(isListening ? Icons.stop_circle_outlined : Icons.play_circle_outline, color: Colors.black45),
                 ],
               ),
             ),
           ),
         ),
-
         const SizedBox(height: 12),
 
         Card(
@@ -125,19 +107,16 @@ class HomeTab extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    "Guest Mode\nLịch sử: Không lưu trữ",
-                    style: TextStyle(fontSize: 16, height: 1.3),
+                    "$displayName\n$historyText",
+                    style: const TextStyle(fontSize: 16, height: 1.3),
                   ),
                 ),
                 ElevatedButton.icon(
                   onPressed: () {
                     if (!auth.loggedIn) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      );
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
                     } else {
                       auth.logout();
                     }
@@ -168,28 +147,19 @@ class HomeTab extends StatelessWidget {
               asset: AppIcons.ocr,
               title: "Quét chữ",
               subtitle: "OCR ảnh",
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const OcrScreen()),
-              ),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OcrScreen())),
             ),
             _tile(
               asset: AppIcons.image,
               title: "Mô tả ảnh",
               subtitle: "Caption ảnh",
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CaptionScreen()),
-              ),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CaptionScreen())),
             ),
             _tile(
               asset: AppIcons.url,
               title: "Đọc báo",
-              subtitle: "Tin mới",
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const NewsAssistantScreen()),
-              ),
+              subtitle: "Tin mới → Tóm tắt → TTS",
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewsAssistantScreen())),
             ),
             _tile(
               asset: AppIcons.camera,

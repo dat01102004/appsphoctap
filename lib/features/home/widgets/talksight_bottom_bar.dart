@@ -44,9 +44,9 @@ class TalkSightBottomBar extends StatelessWidget {
       child: BottomAppBar(
         color: const Color(0xFFE7D9C7),
         shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
+        notchMargin: 8, // ✅ sát hơn (đừng quá lớn)
         child: SizedBox(
-          height: 66,
+          height: 66, // ✅ về lại 66 cho gọn
           child: Row(
             children: [
               Expanded(
@@ -65,7 +65,10 @@ class TalkSightBottomBar extends StatelessWidget {
                   onPressed: () => onTap(1),
                 ),
               ),
-              const SizedBox(width: 70), // chừa chỗ camera giữa (rộng hơn chút)
+
+              // ✅ chừa chỗ vừa đủ với FAB 72
+              const SizedBox(width: 76),
+
               Expanded(
                 child: _item(
                   asset: AppIcons.tasks,
