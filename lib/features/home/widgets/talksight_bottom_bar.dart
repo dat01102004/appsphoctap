@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_icons.dart';
 import '../../../core/widgets/app_icon.dart';
@@ -23,14 +24,22 @@ class TalkSightBottomBar extends StatelessWidget {
 
     return InkWell(
       onTap: onPressed,
+      borderRadius: BorderRadius.circular(18),
       child: Padding(
         padding: const EdgeInsets.only(top: 8, bottom: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            AppIcon(asset, color: color, size: 22),
+            AppIcon(asset, color: color, size: 21),
             const SizedBox(height: 3),
-            Text(label, style: TextStyle(color: color, fontSize: 11)),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
@@ -42,17 +51,21 @@ class TalkSightBottomBar extends StatelessWidget {
     return SafeArea(
       top: false,
       child: BottomAppBar(
-        color: const Color(0xFFE7D9C7),
+        color: AppColors.card,
+        elevation: 16,
+        shadowColor: Colors.black26,
+        surfaceTintColor: Colors.transparent,
         shape: const CircularNotchedRectangle(),
-        notchMargin: 8, // ✅ sát hơn (đừng quá lớn)
+        notchMargin: 4,
+        clipBehavior: Clip.antiAlias,
         child: SizedBox(
-          height: 66, // ✅ về lại 66 cho gọn
+          height: 72,
           child: Row(
             children: [
               Expanded(
                 child: _item(
                   asset: AppIcons.home,
-                  label: "Home",
+                  label: 'Home',
                   active: currentIndex == 0,
                   onPressed: () => onTap(0),
                 ),
@@ -60,19 +73,16 @@ class TalkSightBottomBar extends StatelessWidget {
               Expanded(
                 child: _item(
                   asset: AppIcons.history,
-                  label: "Lịch sử",
+                  label: 'Lịch sử',
                   active: currentIndex == 1,
                   onPressed: () => onTap(1),
                 ),
               ),
-
-              // ✅ chừa chỗ vừa đủ với FAB 72
-              const SizedBox(width: 76),
-
+              const SizedBox(width: 74),
               Expanded(
                 child: _item(
                   asset: AppIcons.tasks,
-                  label: "Tác vụ",
+                  label: 'Tác vụ',
                   active: currentIndex == 2,
                   onPressed: () => onTap(2),
                 ),
@@ -80,7 +90,7 @@ class TalkSightBottomBar extends StatelessWidget {
               Expanded(
                 child: _item(
                   asset: AppIcons.settings,
-                  label: "Cài đặt",
+                  label: 'Cài đặt',
                   active: currentIndex == 3,
                   onPressed: () => onTap(3),
                 ),

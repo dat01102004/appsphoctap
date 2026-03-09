@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_icons.dart';
 import '../../../core/widgets/app_icon.dart';
-
 import '../../auth/auth_controller.dart';
 import '../../auth/login_screen.dart';
 import '../../caption/caption_screen.dart';
@@ -36,20 +35,27 @@ class HomeTab extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              AppIcon(asset, size: 44, color: AppColors.brandBrown),
+              AppIcon(asset, size: 42, color: AppColors.brandBrown),
               const SizedBox(height: 10),
               Text(
                 title,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
                 textAlign: TextAlign.center,
               ),
               if (subtitle != null) ...[
                 const SizedBox(height: 6),
-                Text(subtitle, style: const TextStyle(color: Colors.black54)),
+                Text(
+                  subtitle,
+                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
               ],
             ],
           ),
@@ -58,20 +64,37 @@ class HomeTab extends StatelessWidget {
     );
   }
 
+  Future<void> _handleAuthTap(
+      BuildContext context,
+      AuthController auth,
+      ) async {
+    if (!auth.loggedIn) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+      return;
+    }
+
+    await auth.logout();
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
 
-    final micTitle = isListening ? "Đang nghe..." : "Nhấn mic để nói";
+    final micTitle = isListening ? 'Đang nghe...' : 'Nhấn mic để nói';
     final micSub = isListening
-        ? (lastWords.trim().isEmpty ? "..." : lastWords)
-        : "Bạn có thể nói: đọc báo, quét chữ, mô tả ảnh, chụp nhanh";
+        ? (lastWords.trim().isEmpty ? '...' : lastWords)
+        : 'Bạn có thể nói: đọc báo, quét chữ, mô tả ảnh, chụp nhanh';
 
-    final displayName = auth.loggedIn ? (auth.email ?? "Người dùng") : "Khách";
-    final historyText = auth.loggedIn ? "Lịch sử: Đang lưu trữ" : "Lịch sử: Không lưu trữ";
+    final primaryText = auth.loggedIn ? (auth.email ?? 'Người dùng') : 'Khách';
+    final secondaryText = auth.loggedIn
+        ? 'Lịch sử: Đang lưu trữ'
+        : 'Lịch sử: Không lưu trữ';
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
       children: [
         Card(
           child: InkWell(
@@ -81,90 +104,164 @@ class HomeTab extends StatelessWidget {
               padding: const EdgeInsets.all(14),
               child: Row(
                 children: [
-                  Icon(isListening ? Icons.mic : Icons.mic_none, color: AppColors.brandBrown),
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                      color: AppColors.brandBrown,
+                      size: 20,
+                    ),
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(micTitle, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                        Text(
+                          micTitle,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                         const SizedBox(height: 3),
-                        Text(micSub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black54)),
+                        Text(
+                          micSub,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.black54),
+                        ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Icon(isListening ? Icons.stop_circle_outlined : Icons.play_circle_outline, color: Colors.black45),
+                  Icon(
+                    isListening
+                        ? Icons.stop_circle_outlined
+                        : Icons.play_circle_outline,
+                    color: Colors.black45,
+                  ),
                 ],
               ),
             ),
           ),
         ),
         const SizedBox(height: 12),
-
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             child: Row(
               children: [
-                Expanded(
-                  child: Text(
-                    "$displayName\n$historyText",
-                    style: const TextStyle(fontSize: 16, height: 1.3),
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.person_outline_rounded,
+                    color: AppColors.brandBrown,
+                    size: 24,
                   ),
                 ),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    if (!auth.loggedIn) {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-                    } else {
-                      auth.logout();
-                    }
-                  },
-                  icon: Icon(auth.loggedIn ? Icons.logout : Icons.lock),
-                  label: Text(auth.loggedIn ? "Đăng xuất" : "Đăng nhập"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.brandBrown,
-                    foregroundColor: Colors.white,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        primaryText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        secondaryText,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  height: 40,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _handleAuthTap(context, auth),
+                    icon: Icon(
+                      auth.loggedIn
+                          ? Icons.logout_rounded
+                          : Icons.lock_rounded,
+                      size: 18,
+                    ),
+                    label: Text(auth.loggedIn ? 'Đăng xuất' : 'Đăng nhập'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.brandBrown,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
         ),
-
         const SizedBox(height: 16),
-
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 1.15,
+          childAspectRatio: 1.10,
           children: [
             _tile(
               asset: AppIcons.ocr,
-              title: "Quét chữ",
-              subtitle: "OCR ảnh",
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OcrScreen())),
+              title: 'Quét chữ',
+              subtitle: 'OCR ảnh',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const OcrScreen()),
+              ),
             ),
             _tile(
               asset: AppIcons.image,
-              title: "Mô tả ảnh",
-              subtitle: "Caption ảnh",
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CaptionScreen())),
+              title: 'Mô tả ảnh',
+              subtitle: 'Caption ảnh',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CaptionScreen()),
+              ),
             ),
             _tile(
               asset: AppIcons.url,
-              title: "Đọc báo",
-              subtitle: "Tin mới → Tóm tắt → TTS",
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewsAssistantScreen())),
+              title: 'Đọc báo',
+              subtitle: 'Tin mới',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NewsAssistantScreen()),
+              ),
             ),
             _tile(
               asset: AppIcons.camera,
-              title: "Chụp nhanh",
-              subtitle: "OCR / Caption",
+              title: 'Chụp nhanh',
+              subtitle: 'OCR / Caption',
               onTap: onOpenCameraSheet,
             ),
           ],

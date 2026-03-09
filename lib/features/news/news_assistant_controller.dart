@@ -3,9 +3,13 @@ import 'package:flutter/material.dart';
 import '../../core/errors/error_utils.dart';
 import '../../core/tts/tts_service.dart';
 import '../../data/models/news_models.dart';
+import '../../data/models/read_url_models.dart';
 import '../../data/services/news_api.dart';
 import '../../data/services/read_api.dart';
 import '../voice/voice_controller.dart';
+import 'news_article_payload.dart';
+
+typedef OpenNewsArticle = Future<void> Function(NewsArticlePayload article);
 
 enum NewsStage { idle, listing, waitingChoice, reading }
 
@@ -18,13 +22,32 @@ class NewsAssistantController extends ChangeNotifier {
   NewsStage stage = NewsStage.idle;
   List<NewsItem> items = [];
 
-  // ✅ UI: hiển thị "Mic đang nghe" ngay sau khi đọc xong câu hỏi
-  bool micArmed = false; // true = chuẩn bị/đang nghe lựa chọn
-  String _lastPromptNorm = "";
+  bool micArmed = false;
+  String _lastPromptNorm = '';
+  bool _openingArticle = false;
 
-  NewsAssistantController(this.newsApi, this.readApi, this.tts, this.voice);
+  OpenNewsArticle? _openArticle;
+
+  NewsAssistantController(
+      this.newsApi,
+      this.readApi,
+      this.tts,
+      this.voice,
+      );
 
   bool get active => stage != NewsStage.idle;
+
+  void bindOpenArticle(OpenNewsArticle callback) {
+    _openArticle = callback;
+  }
+
+  void unbindOpenArticle() {
+    _openArticle = null;
+  }
+
+  String displayTitle(NewsItem item) {
+    return _cleanHeadline(item.title, item.source);
+  }
 
   Future<void> startTop() async {
     stage = NewsStage.listing;
@@ -32,16 +55,18 @@ class NewsAssistantController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      items = await newsApi.top(limit: 6);
+      await voice.stop();
+      await tts.stop();
 
-      // ✅ render list ngay
+      items = await newsApi.top(limit: 6);
       notifyListeners();
+
       await Future.delayed(const Duration(milliseconds: 120));
 
       if (items.isEmpty) {
         stage = NewsStage.idle;
         notifyListeners();
-        await tts.speak("Mình chưa lấy được tin mới. Bạn thử lại sau nhé.");
+        await tts.speak('Mình chưa lấy được tin mới. Bạn thử lại sau nhé.');
         return;
       }
 
@@ -59,20 +84,24 @@ class NewsAssistantController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      items = await newsApi.search(q, limit: 6);
+      await voice.stop();
+      await tts.stop();
 
-      // ✅ render list ngay
+      items = await newsApi.search(q, limit: 6);
       notifyListeners();
+
       await Future.delayed(const Duration(milliseconds: 120));
 
       if (items.isEmpty) {
         stage = NewsStage.idle;
         notifyListeners();
-        await tts.speak("Mình không thấy tin phù hợp. Bạn thử nói chủ đề khác nhé.");
+        await tts.speak(
+          'Mình không thấy tin phù hợp. Bạn thử nói chủ đề khác nhé.',
+        );
         return;
       }
 
-      await tts.speak("Ok, mình tìm tin về $q.");
+      await tts.speak('Ok, mình tìm tin về $q.');
       await _speakHeadlinesAndThenListen();
     } catch (e) {
       stage = NewsStage.idle;
@@ -85,124 +114,114 @@ class NewsAssistantController extends ChangeNotifier {
     stage = NewsStage.idle;
     items = [];
     micArmed = false;
+    _openingArticle = false;
     notifyListeners();
+
     await voice.stop();
-    await tts.speak("Ok, mình dừng đọc báo nhé.");
+    await tts.stop();
+    await tts.speak('Ok, mình dừng đọc báo nhé.');
   }
 
-  // =============================
-  // MAIN FLOW: đọc headlines -> hỏi -> bật nghe
-  // =============================
   Future<void> _speakHeadlinesAndThenListen() async {
-    // 1) Đọc 6 tiêu đề
     await _speakHeadlines();
 
-    // 2) Hỏi chọn bài
     stage = NewsStage.waitingChoice;
-    micArmed = true; // ✅ UI thể hiện mic sẽ nghe ngay sau câu hỏi
+    micArmed = true;
     notifyListeners();
 
-    final prompt =
-        "Bạn muốn nghe bài số mấy? Bạn có thể nói: bài 1, bài 2... hoặc nói: đọc lại danh sách, hoặc thoát.";
+    const prompt =
+        'Bạn muốn nghe bài số mấy? Bạn có thể nói: bài 1, bài 2, đọc lại danh sách, hoặc thoát.';
 
     _lastPromptNorm = _norm(prompt);
-
     await tts.speak(prompt);
 
-    // 3) Sau khi TTS nói xong -> bật nghe ngay
-    // (đợi chút để tránh echo)
     await Future.delayed(const Duration(milliseconds: 500));
     await _listenChoice();
   }
 
   Future<void> _speakHeadlines() async {
     final lines = <String>[];
+
     for (int i = 0; i < items.length; i++) {
-      final title = _short(items[i].title, 95);
-      final src = (items[i].source != null && items[i].source!.isNotEmpty)
-          ? " (${items[i].source})"
-          : "";
-      lines.add("${i + 1}. $title$src");
+      final cleanTitle = _cleanPlainText(displayTitle(items[i]));
+      final shortTitle = _short(cleanTitle, 95);
+      lines.add('${i + 1}. $shortTitle');
     }
 
-    // ✅ nói 1 đoạn dài
-    await tts.speak("Mình có ${items.length} tin mới. " + lines.join(". "));
+    await tts.speak('Mình có ${items.length} tin mới. ${lines.join('. ')}');
   }
 
-  // =============================
-  // LISTEN CHOICE: mic bật -> nghe -> xử lý ngay
-  // =============================
   Future<void> _listenChoice() async {
-    // đảm bảo mic trạng thái "đang nghe"
+    if (stage != NewsStage.waitingChoice) return;
+
     micArmed = true;
     notifyListeners();
 
     await voice.stop();
 
-    await voice.start(onFinal: (text) async {
-      final raw = text.trim();
-      final n = _norm(raw);
+    await voice.start(
+      onFinal: (text) async {
+        final raw = text.trim();
+        final n = _norm(raw);
 
-      // 1) rỗng/quá ngắn: nghe lại, KHÔNG mắng
-      if (n.isEmpty || n.length < 2) {
-        await Future.delayed(const Duration(milliseconds: 250));
-        if (stage == NewsStage.waitingChoice) await _listenChoice();
-        return;
-      }
+        if (n.isEmpty || n.length < 2) {
+          await Future.delayed(const Duration(milliseconds: 250));
+          if (stage == NewsStage.waitingChoice) {
+            await _listenChoice();
+          }
+          return;
+        }
 
-      // 2) echo từ TTS: bỏ qua và nghe lại
-      if (_isEchoFromTts(n)) {
-        await Future.delayed(const Duration(milliseconds: 300));
-        if (stage == NewsStage.waitingChoice) await _listenChoice();
-        return;
-      }
+        if (_isEchoFromTts(n)) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          if (stage == NewsStage.waitingChoice) {
+            await _listenChoice();
+          }
+          return;
+        }
 
-      // 3) xử lý ngay yêu cầu user
-      final ok = await handleUtterance(raw);
-      if (!ok && stage == NewsStage.waitingChoice) {
-        await tts.speak("Mình chưa hiểu. Bạn nói số bài nhé.");
-        await Future.delayed(const Duration(milliseconds: 350));
-        await _listenChoice();
-      }
-    });
+        final ok = await handleUtterance(raw);
+
+        if (!ok && stage == NewsStage.waitingChoice) {
+          await tts.speak('Mình chưa hiểu. Bạn nói số bài nhé.');
+          await Future.delayed(const Duration(milliseconds: 350));
+          await _listenChoice();
+        }
+      },
+    );
   }
 
   bool _isEchoFromTts(String n) {
     if (_lastPromptNorm.isEmpty) return false;
-
-    if (n.contains("ban muon nghe bai so may")) return true;
-    if (n.contains("hay noi") && n.contains("bai")) return true;
-
+    if (n.contains('ban muon nghe bai so may')) return true;
+    if (n.contains('hay noi') && n.contains('bai')) return true;
     if (_lastPromptNorm.contains(n) && n.length > 8) return true;
-    if (n.contains("doc lai danh sach")) return false;
-
+    if (n.contains('doc lai danh sach')) return false;
     return false;
   }
 
-  // =============================
-  // HANDLE UTTERANCE
-  // =============================
   Future<bool> handleUtterance(String raw) async {
     if (!active) return false;
 
-    final text = raw.toLowerCase().trim();
-    if (text.isEmpty) return true;
+    final normalized = _norm(raw);
+    if (normalized.isEmpty) return true;
 
-    if (text.contains("thoát") || text.contains("dừng") || text.contains("kết thúc")) {
+    if (normalized.contains('thoat') ||
+        normalized.contains('dung') ||
+        normalized.contains('ket thuc')) {
       await stop();
       return true;
     }
 
-    if (text.contains("đọc lại") || text.contains("danh sách")) {
+    if (normalized.contains('doc lai') || normalized.contains('danh sach')) {
       micArmed = false;
       notifyListeners();
-
       await _speakHeadlinesAndThenListen();
       return true;
     }
 
     if (stage == NewsStage.waitingChoice) {
-      final idx = _parseIndex(text);
+      final idx = _parseIndex(normalized);
       if (idx == null) return false;
       if (idx < 1 || idx > items.length) return false;
 
@@ -218,52 +237,138 @@ class NewsAssistantController extends ChangeNotifier {
     await _readArticle(i);
   }
 
-  // =============================
-  // READ ARTICLE -> summarize -> ask next
-  // =============================
   Future<void> _readArticle(int i) async {
+    if (_openingArticle) return;
+    _openingArticle = true;
+
     stage = NewsStage.reading;
     micArmed = false;
     notifyListeners();
 
     try {
-      final url = items[i].link;
-      _lastPromptNorm = _norm("ok, minh tom tat bai so ${i + 1}");
+      await voice.stop();
+      await tts.stop();
 
-      await tts.speak("Ok, mình tóm tắt bài số ${i + 1}.");
+      final item = items[i];
+      final fallbackTitle = _cleanPlainText(displayTitle(item));
 
-      final res = await readApi.readUrl(url, summary: true);
+      await tts.speak('Ok, mình mở bài số ${i + 1}.');
 
-      final speakText = (res.summaryTts != null && res.summaryTts!.trim().isNotEmpty)
-          ? res.summaryTts!
-          : (res.summary != null && res.summary!.trim().isNotEmpty)
-          ? res.summary!
-          : (res.ttsText != null && res.ttsText!.trim().isNotEmpty)
-          ? res.ttsText!
-          : res.text;
+      final ReadUrlResponse res = await readApi.readUrl(
+        item.link,
+        summary: true,
+      );
 
-      await tts.speak(speakText);
+      final rawTitle = _cleanPlainText((res.title ?? '').trim());
+      final finalTitle =
+      _shouldUseFallbackTitle(rawTitle) ? fallbackTitle : rawTitle;
 
-      // hỏi tiếp
+      final summaryText = _cleanSummaryText(_pickSummaryText(res));
+
+      if (_looksLikeGoogleNewsBoilerplate(finalTitle, summaryText)) {
+        throw Exception('Chưa lấy được nội dung gốc của bài báo này');
+      }
+
+      final article = NewsArticlePayload(
+        title: finalTitle,
+        url: item.link,
+        summary: summaryText,
+        source: item.source,
+        published: item.published,
+      );
+
+      if (_openArticle != null) {
+        await _openArticle!(article);
+      } else {
+        await tts.speak(summaryText);
+      }
+
       stage = NewsStage.waitingChoice;
-      micArmed = true;
+      micArmed = false;
       notifyListeners();
-
-      final prompt = "Bạn muốn nghe bài khác không? Nếu có, nói số bài. Nếu không, nói thoát.";
-      _lastPromptNorm = _norm(prompt);
-
-      await tts.speak(prompt);
-      await Future.delayed(const Duration(milliseconds: 500));
-      await _listenChoice();
     } catch (e) {
       stage = NewsStage.waitingChoice;
       micArmed = true;
       notifyListeners();
 
-      await tts.speak("Có lỗi khi đọc bài. " + ErrorUtils.message(e));
+      await tts.speak('Có lỗi khi mở bài. ${ErrorUtils.message(e)}');
       await Future.delayed(const Duration(milliseconds: 500));
       await _listenChoice();
+    } finally {
+      _openingArticle = false;
     }
+  }
+
+  String _pickSummaryText(ReadUrlResponse res) {
+    if ((res.summary ?? '').trim().isNotEmpty) {
+      return res.summary!.trim();
+    }
+    if ((res.summaryTts ?? '').trim().isNotEmpty) {
+      return res.summaryTts!.trim();
+    }
+    if ((res.ttsText ?? '').trim().isNotEmpty) {
+      return res.ttsText!.trim();
+    }
+    return res.text.trim();
+  }
+
+  bool _shouldUseFallbackTitle(String title) {
+    if (title.trim().isEmpty) return true;
+
+    final n = _norm(title);
+    return n == 'google news' ||
+        n == 'news' ||
+        n == 'bai bao' ||
+        n == 'tin tuc' ||
+        n.contains('google news');
+  }
+
+  bool _looksLikeGoogleNewsBoilerplate(String title, String summary) {
+    final hay = '$title\n$summary'.toLowerCase();
+
+    const signals = [
+      'google news',
+      'dịch vụ tập hợp',
+      'hàng nghìn nguồn tin',
+      'top stories',
+      'cập nhật liên tục',
+      'cá nhân hóa',
+    ];
+
+    int matched = 0;
+    for (final s in signals) {
+      if (hay.contains(s)) matched++;
+    }
+    return matched >= 2;
+  }
+
+  String _cleanPlainText(String input) {
+    var s = input;
+
+    s = s.replaceAll(RegExp(r'\*\*?'), '');
+    s = s.replaceAll(RegExp(r'__?'), '');
+    s = s.replaceAll(RegExp(r'`+'), '');
+    s = s.replaceAll(RegExp(r'\[(.*?)\]\((.*?)\)'), r'$1');
+    s = s.replaceAll(RegExp(r'#+\s*'), '');
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    return s;
+  }
+
+  String _cleanSummaryText(String input) {
+    var s = input;
+
+    s = s.replaceAll(RegExp(r'\r\n'), '\n');
+    s = s.replaceAll(RegExp(r'\*\*?'), '');
+    s = s.replaceAll(RegExp(r'__?'), '');
+    s = s.replaceAll(RegExp(r'`+'), '');
+    s = s.replaceAll(RegExp(r'\[(.*?)\]\((.*?)\)'), r'$1');
+    s = s.replaceAll(RegExp(r'^\s*#+\s*', multiLine: true), '');
+    s = s.replaceAll(RegExp(r'^\s*[-*•]+\s*', multiLine: true), '');
+    s = s.replaceAll(RegExp(r'[ \t]+'), ' ');
+    s = s.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+
+    return s.trim();
   }
 
   int? _parseIndex(String text) {
@@ -271,31 +376,85 @@ class NewsAssistantController extends ChangeNotifier {
     if (m != null) return int.tryParse(m.group(1)!);
 
     const map = {
-      "một": 1,
-      "hai": 2,
-      "ba": 3,
-      "bốn": 4,
-      "tư": 4,
-      "năm": 5,
-      "sáu": 6,
+      'mot': 1,
+      'hai': 2,
+      'ba': 3,
+      'bon': 4,
+      'tu': 4,
+      'nam': 5,
+      'sau': 6,
     };
+
     for (final e in map.entries) {
       if (text.contains(e.key)) return e.value;
     }
+
     return null;
   }
 
-  String _short(String s, int n) => s.length <= n ? s : "${s.substring(0, n).trim()}...";
+  String _cleanHeadline(String raw, String? source) {
+    var title = raw.trim();
+    final src = (source ?? '').trim();
+
+    if (src.isNotEmpty) {
+      final escaped = RegExp.escape(src);
+
+      final patterns = [
+        RegExp(
+          r'\s*[-–—|•]\s*' + escaped + r'\s*$',
+          caseSensitive: false,
+        ),
+        RegExp(
+          r'\s*[-–—|•]\s*Báo điện tử\s+' + escaped + r'\s*$',
+          caseSensitive: false,
+        ),
+        RegExp(
+          r'\s*[-–—|•]\s*' + escaped + r'\s*online\s*$',
+          caseSensitive: false,
+        ),
+      ];
+
+      for (final p in patterns) {
+        title = title.replaceFirst(p, '').trim();
+      }
+    }
+
+    final genericSplit = RegExp(r'\s[-–—|•]\s');
+    final parts = title.split(genericSplit);
+
+    if (parts.length > 1) {
+      final tail = parts.last.trim();
+
+      final looksLikeSource = tail.length <= 24 &&
+          !tail.contains(',') &&
+          !tail.contains('.') &&
+          !tail.contains('?') &&
+          !tail.contains('!');
+
+      if (looksLikeSource) {
+        title = parts.sublist(0, parts.length - 1).join(' - ').trim();
+      }
+    }
+
+    return title;
+  }
+
+  String _short(String s, int n) {
+    return s.length <= n ? s : '${s.substring(0, n).trim()}...';
+  }
 
   String _norm(String s) {
     s = s.toLowerCase().trim();
+
     const withDia =
         'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
     const without =
         'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
+
     for (int i = 0; i < withDia.length; i++) {
       s = s.replaceAll(withDia[i], without[i]);
     }
+
     s = s.replaceAll(RegExp(r'\s+'), ' ');
     return s;
   }

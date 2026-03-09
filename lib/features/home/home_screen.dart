@@ -9,19 +9,15 @@ import '../../core/theme/app_icons.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/app_icon.dart';
 import '../../data/services/vision_api.dart';
-
 import '../caption/caption_screen.dart';
 import '../news/news_assistant_controller.dart';
 import '../news/news_assistant_screen.dart';
 import '../ocr/ocr_screen.dart';
+import '../player/player_controller.dart';
+import '../player/player_sliding_panel.dart';
 import '../read_url/read_url_screen.dart';
 import '../vision/vision_result_screen.dart';
 import '../voice/voice_controller.dart';
-
-// ✅ draggable popup
-import '../player/player_controller.dart';
-import '../player/player_sliding_panel.dart';
-
 import 'tabs/history_tab.dart';
 import 'tabs/home_tab.dart';
 import 'tabs/settings_tab.dart';
@@ -39,14 +35,18 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _picker = ImagePicker();
+  static const double _fabSize = 66;
+  static const double _bottomBarHeight = 72;
+  static const double _playerBottomOffset = 74;
+
+  final ImagePicker _picker = ImagePicker();
 
   int _index = 0;
   bool _loading = false;
   bool _greeted = false;
 
-  String _lastSpokenText = "";
-  String _lastSpokenTitle = "TalkSight";
+  String _lastSpokenText = '';
+  String _lastSpokenTitle = 'TalkSight';
 
   VoiceController? _voiceRef;
   bool _voiceListenerAttached = false;
@@ -59,7 +59,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _voiceRef = context.read<VoiceController>();
       _voiceRef!.addListener(_syncVoiceToPlayer);
       _voiceListenerAttached = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _syncVoiceToPlayer());
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _syncVoiceToPlayer();
+      });
     }
 
     if (_greeted) return;
@@ -67,9 +70,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _say(
-        "Xin chào bạn! Hôm nay bạn muốn sử dụng tính năng gì? "
-            "Bạn có thể nói: quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh.",
-        title: "TalkSight",
+        'Xin chào bạn! Hôm nay bạn muốn sử dụng tính năng gì? '
+            'Bạn có thể nói: quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh.',
+        title: 'TalkSight',
       );
       await _startVoiceOnce();
     });
@@ -85,38 +88,56 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _syncVoiceToPlayer() {
     if (!mounted) return;
-    final v = context.read<VoiceController>();
-    final pc = context.read<PlayerController>();
 
-    pc.setListening(v.isListening);
+    final voice = context.read<VoiceController>();
+    final player = context.read<PlayerController>();
 
-    if (v.isListening) {
-      final s = v.lastWords.trim().isEmpty ? "Đang nghe..." : "Đang nghe: ${v.lastWords}";
-      pc.setNow(_lastSpokenTitle, s);
-    } else {
-      if (pc.subtitle.startsWith("Đang nghe")) {
-        pc.setNow(_lastSpokenTitle, "Sẵn sàng");
-      }
+    player.setListening(voice.isListening);
+
+    if (voice.isListening) {
+      final text = voice.lastWords.trim().isEmpty
+          ? 'Đang nghe...'
+          : 'Đang nghe: ${voice.lastWords}';
+      player.setNow(
+        _lastSpokenTitle,
+        text,
+        newDetails: voice.lastWords.trim().isEmpty ? 'Đang nghe...' : voice.lastWords,
+      );
+      return;
+    }
+
+    if (player.subtitle.startsWith('Đang nghe')) {
+      player.setNow(_lastSpokenTitle, 'Sẵn sàng');
     }
   }
 
-  Future<void> _say(String text, {String? title}) async {
+  Future<void> _say(
+      String text, {
+        String? title,
+      }) async {
     final tts = context.read<TtsService>();
-    final pc = context.read<PlayerController>();
+    final player = context.read<PlayerController>();
 
     _lastSpokenText = text;
     _lastSpokenTitle = title ?? _lastSpokenTitle;
 
-    final preview = text.length > 80 ? "${text.substring(0, 80)}..." : text;
-    pc.setNow(_lastSpokenTitle, preview);
-    pc.setPlaying(true);
+    final preview = text.length > 84 ? '${text.substring(0, 84)}...' : text;
+
+    player.setNow(
+      _lastSpokenTitle,
+      preview,
+      newDetails: text,
+    );
+    player.setPlaying(true);
 
     try {
       await tts.speak(text);
     } finally {
-      pc.setPlaying(false);
-      final v = context.read<VoiceController>();
-      if (!v.isListening) pc.setNow(_lastSpokenTitle, "Sẵn sàng");
+      player.setPlaying(false);
+      final voice = context.read<VoiceController>();
+      if (!voice.isListening) {
+        player.setNow(_lastSpokenTitle, 'Sẵn sàng');
+      }
     }
   }
 
@@ -125,13 +146,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await Future.delayed(const Duration(milliseconds: 350));
 
-    await voice.start(onFinal: (text) async {
-      if (text.trim().isEmpty) {
-        await _say("Mình chưa nghe rõ. Bạn nói lại giúp mình nhé.", title: "TalkSight");
-        return _startVoiceOnce();
-      }
-      await _handleVoiceCommand(text);
-    });
+    await voice.start(
+      onFinal: (text) async {
+        if (text.trim().isEmpty) {
+          await _say(
+            'Mình chưa nghe rõ. Bạn nói lại giúp mình nhé.',
+            title: 'TalkSight',
+          );
+          await _startVoiceOnce();
+          return;
+        }
+
+        await _handleVoiceCommand(text);
+      },
+    );
   }
 
   Future<void> _toggleMic() async {
@@ -154,101 +182,143 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final text = _norm(raw);
 
-    final isNewsCmd =
-        text.contains("doc web") || text.contains("doc bao") || text.contains("tin tuc") || text.contains("bao moi") || text.contains("tin moi");
+    final isNewsCmd = text.contains('doc web') ||
+        text.contains('doc bao') ||
+        text.contains('tin tuc') ||
+        text.contains('bao moi') ||
+        text.contains('tin moi');
 
     if (isNewsCmd) {
       final topic = _extractTopic(text);
-      await _say("Ok, mình mở trợ lý đọc báo.", title: "Đọc báo");
+      await _say('Ok, mình mở trợ lý đọc báo.', title: 'Đọc báo');
       if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => NewsAssistantScreen(initialQuery: topic)));
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NewsAssistantScreen(initialQuery: topic),
+        ),
+      );
       return;
     }
 
-    if (text.contains("doc url") || text.contains("dan url") || text.contains("doc duong dan")) {
-      await _say("Mở đọc URL.", title: "Đọc URL");
+    if (text.contains('doc url') ||
+        text.contains('dan url') ||
+        text.contains('doc duong dan')) {
+      await _say('Mở đọc URL.', title: 'Đọc URL');
       if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadUrlScreen()));
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ReadUrlScreen()),
+      );
       return;
     }
 
-    if (text.contains("lich su")) {
+    if (text.contains('lich su')) {
       setState(() => _index = 1);
-      await _say("Mở lịch sử.", title: "Lịch sử");
+      await _say('Mở lịch sử.', title: 'Lịch sử');
       return;
     }
 
-    if (text.contains("tac vu")) {
+    if (text.contains('tac vu')) {
       setState(() => _index = 2);
-      await _say("Mở tác vụ.", title: "Tác vụ");
+      await _say('Mở tác vụ.', title: 'Tác vụ');
       return;
     }
 
-    if (text.contains("cai dat") || text.contains("setting")) {
+    if (text.contains('cai dat') || text.contains('setting')) {
       setState(() => _index = 3);
-      await _say("Mở cài đặt.", title: "Cài đặt");
+      await _say('Mở cài đặt.', title: 'Cài đặt');
       return;
     }
 
-    if (text.contains("home") || text.contains("trang chu")) {
+    if (text.contains('home') || text.contains('trang chu')) {
       setState(() => _index = 0);
-      await _say("Về trang chủ.", title: "Home");
+      await _say('Về trang chủ.', title: 'Home');
       return;
     }
 
-    if (text.contains("quet") || text.contains("o c r") || text.contains("ocr")) {
-      await _say("Mở quét chữ.", title: "OCR");
+    if (text.contains('quet') || text.contains('ocr') || text.contains('o c r')) {
+      await _say('Mở quét chữ.', title: 'OCR');
       if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const OcrScreen()));
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const OcrScreen()),
+      );
       return;
     }
 
-    if (text.contains("mo ta") || text.contains("caption") || text.contains("hinh anh")) {
-      await _say("Mở mô tả ảnh.", title: "Mô tả ảnh");
+    if (text.contains('mo ta') ||
+        text.contains('caption') ||
+        text.contains('hinh anh')) {
+      await _say('Mở mô tả ảnh.', title: 'Mô tả ảnh');
       if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const CaptionScreen()));
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const CaptionScreen()),
+      );
       return;
     }
 
-    if (text.contains("chup") || text.contains("camera")) {
-      await _say("Mở camera.", title: "Camera");
+    if (text.contains('chup') || text.contains('camera')) {
+      await _say('Mở camera.', title: 'Camera');
       await _onCameraPressed();
       return;
     }
 
-    await _say("Mình chưa hiểu lệnh. Bạn thử nói: đọc báo, quét chữ, mô tả ảnh, hoặc chụp nhanh.", title: "TalkSight");
+    await _say(
+      'Mình chưa hiểu lệnh. Bạn thử nói: đọc báo, quét chữ, mô tả ảnh, hoặc chụp nhanh.',
+      title: 'TalkSight',
+    );
     await _startVoiceOnce();
   }
 
   String? _extractTopic(String text) {
-    final idx = text.indexOf("ve ");
+    final idx = text.indexOf('ve ');
     if (idx >= 0) return text.substring(idx + 3).trim();
 
-    if (text.startsWith("doc bao")) return text.replaceFirst("doc bao", "").trim();
-    if (text.startsWith("tin tuc")) return text.replaceFirst("tin tuc", "").trim();
-    if (text.startsWith("doc web")) return text.replaceFirst("doc web", "").trim();
+    if (text.startsWith('doc bao')) {
+      final value = text.replaceFirst('doc bao', '').trim();
+      return value.isEmpty ? null : value;
+    }
+
+    if (text.startsWith('tin tuc')) {
+      final value = text.replaceFirst('tin tuc', '').trim();
+      return value.isEmpty ? null : value;
+    }
+
+    if (text.startsWith('doc web')) {
+      final value = text.replaceFirst('doc web', '').trim();
+      return value.isEmpty ? null : value;
+    }
 
     return null;
   }
 
   Future<void> _onCameraPressed() async {
-    final cam = await Permission.camera.request();
-    if (!cam.isGranted) {
-      final msg = "Bạn cần cấp quyền camera để chụp ảnh.";
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      await _say(msg, title: "Camera");
+    final cameraPermission = await Permission.camera.request();
+
+    if (!cameraPermission.isGranted) {
+      const message = 'Bạn cần cấp quyền camera để chụp ảnh.';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(message)),
+        );
+      }
+      await _say(message, title: 'Camera');
       return;
     }
 
-    final img = await _picker.pickImage(source: ImageSource.camera, imageQuality: 88);
-    if (img == null) return;
+    final image = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 88,
+    );
 
-    if (!mounted) return;
-    _openAfterShotSheet(img.path);
+    if (image == null || !mounted) return;
+    _openAfterShotSheet(image.path);
   }
 
   void _openAfterShotSheet(String imagePath) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (_) {
@@ -257,16 +327,24 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const AppIcon(AppIcons.ocr, size: 24, color: AppColors.brandBrown),
-                title: const Text("Quét chữ (OCR)"),
+                leading: const AppIcon(
+                  AppIcons.ocr,
+                  size: 24,
+                  color: AppColors.brandBrown,
+                ),
+                title: const Text('Quét chữ (OCR)'),
                 onTap: () {
                   Navigator.pop(context);
                   _processImage(imagePath, VisionMode.ocr);
                 },
               ),
               ListTile(
-                leading: const AppIcon(AppIcons.image, size: 24, color: AppColors.brandBrown),
-                title: const Text("Mô tả ảnh (Caption)"),
+                leading: const AppIcon(
+                  AppIcons.image,
+                  size: 24,
+                  color: AppColors.brandBrown,
+                ),
+                title: const Text('Mô tả ảnh (Caption)'),
                 onTap: () {
                   Navigator.pop(context);
                   _processImage(imagePath, VisionMode.caption);
@@ -282,48 +360,95 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _processImage(String path, VisionMode mode) async {
     setState(() => _loading = true);
+
     final api = context.read<VisionApi>();
 
     try {
       if (mode == VisionMode.ocr) {
         final res = await api.ocr(path);
-        setState(() => _loading = false);
         if (!mounted) return;
-        Navigator.push(context, MaterialPageRoute(builder: (_) => VisionResultScreen(title: "Kết quả OCR", content: res.text)));
-        _lastSpokenTitle = "OCR";
-        _lastSpokenText = res.text;
-        context.read<PlayerController>().setNow("OCR", "Kết quả sẵn sàng");
-      } else {
-        final res = await api.caption(path);
+
         setState(() => _loading = false);
-        if (!mounted) return;
-        Navigator.push(context, MaterialPageRoute(builder: (_) => VisionResultScreen(title: "Kết quả mô tả ảnh", content: res.caption)));
-        _lastSpokenTitle = "Mô tả ảnh";
-        _lastSpokenText = res.caption;
-        context.read<PlayerController>().setNow("Mô tả ảnh", "Kết quả sẵn sàng");
+
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => VisionResultScreen(
+              title: 'Kết quả OCR',
+              content: res.text,
+            ),
+          ),
+        );
+
+        final preview =
+        res.text.length > 84 ? '${res.text.substring(0, 84)}...' : res.text;
+
+        context.read<PlayerController>().setNow(
+          'OCR',
+          preview,
+          newDetails: res.text,
+        );
+
+        Future.microtask(() => _say(res.text, title: 'OCR'));
+        return;
       }
-    } catch (e) {
+
+      final res = await api.caption(path);
+      if (!mounted) return;
+
       setState(() => _loading = false);
-      final msg = ErrorUtils.message(e);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      await context.read<TtsService>().speak(msg);
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VisionResultScreen(
+            title: 'Kết quả mô tả ảnh',
+            content: res.caption,
+          ),
+        ),
+      );
+
+      final preview = res.caption.length > 84
+          ? '${res.caption.substring(0, 84)}...'
+          : res.caption;
+
+      context.read<PlayerController>().setNow(
+        'Mô tả ảnh',
+        preview,
+        newDetails: res.caption,
+      );
+
+      Future.microtask(() => _say(res.caption, title: 'Mô tả ảnh'));
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+
+      final message = ErrorUtils.message(e);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
+
+      await context.read<TtsService>().speak(message);
     }
   }
 
-  // ===== Panel callbacks =====
   Future<void> _onPlayPause() async {
-    final pc = context.read<PlayerController>();
+    final player = context.read<PlayerController>();
     final tts = context.read<TtsService>();
 
-    if (pc.isPlaying) {
+    if (player.isPlaying) {
       await tts.stop();
-      pc.setPlaying(false);
-      pc.setNow(_lastSpokenTitle, "Đã dừng");
+      player.setPlaying(false);
+      player.setNow(_lastSpokenTitle, 'Đã dừng');
       return;
     }
 
     if (_lastSpokenText.trim().isEmpty) {
-      await _say("Bạn chưa có nội dung để phát lại.", title: "TalkSight");
+      await _say('Bạn chưa có nội dung để phát lại.', title: 'TalkSight');
       return;
     }
 
@@ -331,15 +456,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _onStopTts() async {
-    final pc = context.read<PlayerController>();
+    final player = context.read<PlayerController>();
     await context.read<TtsService>().stop();
-    pc.setPlaying(false);
-    pc.setNow(_lastSpokenTitle, "Đã dừng");
+    player.setPlaying(false);
+    player.setNow(_lastSpokenTitle, 'Đã dừng');
   }
 
-  Future<void> _onMicFromPanel() async => _toggleMic();
-
-  void _openList() => setState(() => _index = 1);
+  Future<void> _onMicFromPanel() async {
+    await _toggleMic();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -365,8 +490,12 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Stack(
         children: [
-          SafeArea(child: IndexedStack(index: _index, children: pages)),
-
+          SafeArea(
+            child: IndexedStack(
+              index: _index,
+              children: pages,
+            ),
+          ),
           if (_loading)
             Container(
               color: Colors.black45,
@@ -379,18 +508,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         CircularProgressIndicator(),
                         SizedBox(width: 12),
-                        Text("Đang xử lý..."),
+                        Text('Đang xử lý...'),
                       ],
                     ),
                   ),
                 ),
               ),
             ),
-
-          // ✅ Panel kéo lên/kéo xuống: HẠ XUỐNG SÁT CAMERA
-          // trước bạn để bottom 78 => bị cao, giờ hạ xuống đúng theo height bottom bar (66)
           Positioned.fill(
-            bottom: 56, // ✅ hạ panel xuống sát khu vực camera/bottom bar như mock
+            bottom: _playerBottomOffset,
             child: Align(
               alignment: Alignment.bottomCenter,
               child: PlayerSlidingPanel(
@@ -402,21 +528,19 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: Transform.translate(
-        // ✅ kéo lên ít thôi để sát bottom bar
-        offset: const Offset(0, -6),
+        offset: const Offset(0, -8),
         child: SizedBox(
-          width: 72, // ✅ nhỏ lại
-          height: 72,
+          width: _fabSize,
+          height: _fabSize,
           child: DecoratedBox(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 7), // ✅ viền vừa
+              border: Border.all(color: Colors.white, width: 5),
               boxShadow: const [
                 BoxShadow(
-                  blurRadius: 14,
+                  blurRadius: 16,
                   offset: Offset(0, 6),
                   color: Colors.black26,
                 ),
@@ -426,21 +550,24 @@ class _HomeScreenState extends State<HomeScreen> {
               elevation: 0,
               backgroundColor: AppColors.brandBrown,
               onPressed: _onCameraPressed,
-              child: const AppIcon(AppIcons.camera, color: Colors.white, size: 30),
+              child: const AppIcon(
+                AppIcons.camera,
+                color: Colors.white,
+                size: 28,
+              ),
             ),
           ),
         ),
       ),
-
       bottomNavigationBar: TalkSightBottomBar(
         currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
+        onTap: (value) => setState(() => _index = value),
       ),
     );
   }
 
-  String _norm(String s) {
-    s = s.toLowerCase().trim();
+  String _norm(String input) {
+    var s = input.toLowerCase().trim();
 
     const withDia =
         'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';

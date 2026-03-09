@@ -3,16 +3,21 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_icons.dart';
-import '../../core/widgets/app_icon.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/widgets/app_icon.dart';
 import '../../data/services/read_api.dart';
 import '../voice/voice_controller.dart';
+import 'news_article_payload.dart';
+import 'news_article_screen.dart';
 import 'news_assistant_controller.dart';
 
 class NewsAssistantScreen extends StatefulWidget {
-  final String? initialQuery; // null => top news
+  final String? initialQuery;
 
-  const NewsAssistantScreen({super.key, this.initialQuery});
+  const NewsAssistantScreen({
+    super.key,
+    this.initialQuery,
+  });
 
   @override
   State<NewsAssistantScreen> createState() => _NewsAssistantScreenState();
@@ -21,32 +26,46 @@ class NewsAssistantScreen extends StatefulWidget {
 class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
   final _q = TextEditingController();
   final _url = TextEditingController();
-  int _tab = 0; // 0: Tin mới, 1: Dán URL
+
+  int _tab = 0;
+
+  late final NewsAssistantController _news;
 
   @override
   void initState() {
     super.initState();
-    _q.text = widget.initialQuery ?? "";
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final tts = context.read<TtsService>();
-      final news = context.read<NewsAssistantController>();
 
-      // Khi mở màn hình: nếu có query => search, không thì top
+    _news = context.read<NewsAssistantController>();
+    _q.text = widget.initialQuery ?? "";
+
+    _news.bindOpenArticle(_openArticle);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if ((widget.initialQuery ?? "").trim().isNotEmpty) {
-        await tts.speak("Ok, mình tìm tin về ${widget.initialQuery}.");
-        await news.startSearch(widget.initialQuery!.trim());
+        await _news.startSearch(widget.initialQuery!.trim());
       } else {
-        await tts.speak("Mình đang lấy tin mới hôm nay.");
-        await news.startTop();
+        await _news.startTop();
       }
     });
   }
 
   @override
   void dispose() {
+    _news.unbindOpenArticle();
     _q.dispose();
     _url.dispose();
     super.dispose();
+  }
+
+  Future<void> _openArticle(NewsArticlePayload article) async {
+    if (!mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NewsArticleScreen(article: article),
+      ),
+    );
   }
 
   Future<void> _toggleMic() async {
@@ -59,24 +78,30 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
       return;
     }
 
-    await tts.speak("Bạn muốn làm gì? Bạn có thể nói: bài 1, bài 2..., đọc lại danh sách, hoặc thoát.");
-    await voice.start(onFinal: (text) async {
-      // Ưu tiên xử lý trong chế độ đọc báo
-      final handled = await news.handleUtterance(text);
-      if (!handled) {
-        await tts.speak("Mình chưa hiểu. Bạn nói: bài số mấy, hoặc đọc lại danh sách.");
-      }
-    });
+    await tts.speak(
+      "Bạn muốn làm gì? Bạn có thể nói: bài 1, bài 2, đọc lại danh sách, hoặc thoát.",
+    );
+
+    await voice.start(
+      onFinal: (text) async {
+        final handled = await news.handleUtterance(text);
+        if (!handled) {
+          await tts.speak("Mình chưa hiểu. Bạn nói: bài số mấy, hoặc đọc lại danh sách.");
+        }
+      },
+    );
   }
 
   Future<void> _search() async {
     final news = context.read<NewsAssistantController>();
     final tts = context.read<TtsService>();
     final q = _q.text.trim();
+
     if (q.isEmpty) {
       await tts.speak("Bạn nhập chủ đề trước nhé.");
       return;
     }
+
     await news.startSearch(q);
   }
 
@@ -88,6 +113,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
   Future<void> _readUrlManual() async {
     final url = _url.text.trim();
     final tts = context.read<TtsService>();
+
     if (url.isEmpty) {
       await tts.speak("Bạn dán URL trước nhé.");
       return;
@@ -98,16 +124,16 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
       final api = context.read<ReadApi>();
       final res = await api.readUrl(url, summary: true);
 
-      final speakText = (res.summaryTts != null && res.summaryTts!.trim().isNotEmpty)
-          ? res.summaryTts!
-          : (res.summary != null && res.summary!.trim().isNotEmpty)
+      final speakText = (res.summary ?? "").trim().isNotEmpty
           ? res.summary!
-          : (res.ttsText != null && res.ttsText!.trim().isNotEmpty)
+          : (res.summaryTts ?? "").trim().isNotEmpty
+          ? res.summaryTts!
+          : (res.ttsText ?? "").trim().isNotEmpty
           ? res.ttsText!
           : res.text;
 
       await tts.speak(speakText);
-    } catch (e) {
+    } catch (_) {
       await tts.speak("Có lỗi khi đọc URL.");
     }
   }
@@ -123,14 +149,15 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
         actions: [
           IconButton(
             onPressed: _toggleMic,
-            icon: Icon(voice.isListening ? Icons.mic : Icons.mic_none),
+            icon: Icon(
+              voice.isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+            ),
           ),
         ],
       ),
       body: SafeArea(
         child: Column(
           children: [
-            // Tabs
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
@@ -155,9 +182,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                 ],
               ),
             ),
-
             if (_tab == 0) ...[
-              // Search bar + actions
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
                 child: Row(
@@ -171,11 +196,15 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                           fillColor: AppColors.card,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: AppColors.cardStroke.withOpacity(0.7)),
+                            borderSide: BorderSide(
+                              color: AppColors.cardStroke.withOpacity(0.7),
+                            ),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(color: AppColors.cardStroke.withOpacity(0.7)),
+                            borderSide: BorderSide(
+                              color: AppColors.cardStroke.withOpacity(0.7),
+                            ),
                           ),
                           prefixIcon: const Icon(Icons.search),
                         ),
@@ -185,18 +214,16 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                     IconButton(
                       tooltip: "Tìm",
                       onPressed: _search,
-                      icon: const Icon(Icons.send),
+                      icon: const Icon(Icons.send_rounded),
                     ),
                     IconButton(
                       tooltip: "Tin mới",
                       onPressed: _top,
-                      icon: const Icon(Icons.refresh),
+                      icon: const Icon(Icons.refresh_rounded),
                     ),
                   ],
                 ),
               ),
-
-              // Status line (hiển thị text STT realtime)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Card(
@@ -204,7 +231,11 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                     padding: const EdgeInsets.all(12),
                     child: Row(
                       children: [
-                        AppIcon(AppIcons.magic, size: 20, color: AppColors.brandBrown),
+                        AppIcon(
+                          AppIcons.magic,
+                          size: 20,
+                          color: AppColors.brandBrown,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
@@ -220,35 +251,42 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
                   itemCount: news.items.length,
                   itemBuilder: (_, i) {
                     final it = news.items[i];
+                    final subtitleParts = <String>[
+                      if ((it.source ?? "").trim().isNotEmpty) it.source!,
+                      if ((it.published ?? "").trim().isNotEmpty) it.published!,
+                    ];
+
                     return Card(
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: AppColors.cardStroke.withOpacity(0.5),
-                          child: Text("${i + 1}", style: const TextStyle(fontWeight: FontWeight.w800)),
+                          backgroundColor:
+                          AppColors.cardStroke.withOpacity(0.5),
+                          child: Text(
+                            "${i + 1}",
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
                         ),
                         title: Text(
-                          it.title,
+                          news.displayTitle(it),
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
-                        subtitle: Text(
-                          (it.source ?? "").isEmpty ? (it.published ?? "") : "${it.source} • ${it.published ?? ""}",
-                        ),
-                        trailing: const Icon(Icons.play_arrow),
-                        onTap: () => news.readIndex(i), // ✅ bấm bài nào đọc bài đó
+                        subtitle: subtitleParts.isEmpty
+                            ? null
+                            : Text(subtitleParts.join(" • ")),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => news.readIndex(i),
                       ),
                     );
                   },
                 ),
               ),
             ] else ...[
-              // Manual URL mode
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.all(16),
@@ -259,7 +297,13 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text("Dán URL", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                            const Text(
+                              "Dán URL",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
                             const SizedBox(height: 10),
                             TextField(
                               controller: _url,
@@ -267,7 +311,9 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                                 hintText: "https://...",
                                 filled: true,
                                 fillColor: Colors.white,
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -280,7 +326,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                                   foregroundColor: Colors.white,
                                 ),
                                 onPressed: _readUrlManual,
-                                icon: const Icon(Icons.volume_up),
+                                icon: const Icon(Icons.volume_up_rounded),
                                 label: const Text("Tóm tắt & Đọc"),
                               ),
                             ),

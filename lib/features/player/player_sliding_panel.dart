@@ -23,168 +23,194 @@ class PlayerSlidingPanel extends StatefulWidget {
 }
 
 class _PlayerSlidingPanelState extends State<PlayerSlidingPanel> {
-  final DraggableScrollableController _controller = DraggableScrollableController();
+  final DraggableScrollableController _controller =
+  DraggableScrollableController();
 
-  double _extent = 0.12;
-  bool get _expanded => _extent > 0.22;
+  double _extent = 0.115;
+
+  bool get _expanded => _extent > 0.20;
 
   void _toggleExpand() {
-    final target = _expanded ? 0.12 : 0.40;
+    final target = _expanded ? 0.115 : 0.42;
     _controller.animateTo(
       target,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final pc = context.watch<PlayerController>();
+    final player = context.watch<PlayerController>();
     final voice = context.watch<VoiceController>();
 
-    // dòng 2: ưu tiên hiển thị mic listening
-    final line2 = voice.isListening
-        ? (voice.lastWords.trim().isEmpty ? "Đang nghe..." : "Đang nghe: ${voice.lastWords}")
-        : pc.subtitle;
+    final collapsedText = voice.isListening
+        ? (voice.lastWords.trim().isEmpty
+        ? 'Đang nghe...'
+        : 'Đang nghe: ${voice.lastWords}')
+        : player.subtitle;
+
+    final fullText = voice.isListening
+        ? (voice.lastWords.trim().isEmpty ? 'Đang nghe...' : voice.lastWords)
+        : (player.details.trim().isEmpty ? player.subtitle : player.details);
 
     return NotificationListener<DraggableScrollableNotification>(
-      onNotification: (n) {
-        setState(() => _extent = n.extent);
+      onNotification: (notification) {
+        setState(() => _extent = notification.extent);
         return false;
       },
       child: DraggableScrollableSheet(
         controller: _controller,
-        initialChildSize: 0.12,
-        minChildSize: 0.10,
-        maxChildSize: 0.40,
+        initialChildSize: 0.115,
+        minChildSize: 0.115,
+        maxChildSize: 0.42,
         snap: true,
-        snapSizes: const [0.12, 0.40],
+        snapSizes: const [0.115, 0.42],
         builder: (context, scrollController) {
           return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12),
+            margin: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
               color: AppColors.brandBrown,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(18),
               boxShadow: const [
-                BoxShadow(blurRadius: 14, offset: Offset(0, 8), color: Colors.black26),
+                BoxShadow(
+                  blurRadius: 18,
+                  offset: Offset(0, 8),
+                  color: Colors.black26,
+                ),
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: SingleChildScrollView(
-                controller: scrollController,
-                physics: const ClampingScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // ===== MINI HEADER (luôn hiện) =====
-                      Row(
-                        children: [
-                          Expanded(
+              borderRadius: BorderRadius.circular(18),
+              child: Material(
+                color: Colors.transparent,
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  physics: const ClampingScrollPhysics(),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    player.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    collapsedText,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            _circleIconButton(
+                              tooltip: 'Dừng',
+                              icon: Icons.stop_rounded,
+                              onPressed: () async => widget.onStop(),
+                            ),
+                            _circleIconButton(
+                              tooltip:
+                              player.isPlaying ? 'Tạm dừng' : 'Phát lại',
+                              icon: player.isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              onPressed: () async => widget.onPlayPause(),
+                            ),
+                            _circleIconButton(
+                              tooltip:
+                              voice.isListening ? 'Dừng mic' : 'Bật mic',
+                              icon: voice.isListening
+                                  ? Icons.mic_rounded
+                                  : Icons.mic_none_rounded,
+                              onPressed: () async => widget.onMic(),
+                            ),
+                            _circleIconButton(
+                              tooltip:
+                              player.repeat ? 'Tắt lặp' : 'Lặp lại',
+                              icon: player.repeat
+                                  ? Icons.repeat_one_rounded
+                                  : Icons.repeat_rounded,
+                              onPressed: () {
+                                context.read<PlayerController>().toggleRepeat();
+                              },
+                            ),
+                            _circleIconButton(
+                              tooltip: 'Cài đặt giọng đọc',
+                              icon: Icons.settings_rounded,
+                              onPressed: () {
+                                showModalBottomSheet(
+                                  context: context,
+                                  showDragHandle: true,
+                                  builder: (_) => const PlayerSettingsSheet(),
+                                );
+                              },
+                            ),
+                            _circleIconButton(
+                              tooltip: _expanded ? 'Thu nhỏ' : 'Mở rộng',
+                              icon: _expanded
+                                  ? Icons.keyboard_arrow_down_rounded
+                                  : Icons.keyboard_arrow_up_rounded,
+                              onPressed: _toggleExpand,
+                            ),
+                          ],
+                        ),
+                        if (_expanded) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            constraints: const BoxConstraints(minHeight: 170),
+                            padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.white24),
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  pc.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                  player.title,
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w900,
-                                    fontSize: 14,
+                                    fontSize: 17,
                                   ),
                                 ),
-                                const SizedBox(height: 2),
+                                const SizedBox(height: 10),
                                 Text(
-                                  line2,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                  fullText,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 14,
+                                    height: 1.45,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 6),
-
-                          _iconBtnAsync(
-                            tooltip: "Dừng",
-                            icon: Icons.stop,
-                            onTap: widget.onStop,
-                          ),
-                          _iconBtnAsync(
-                            tooltip: pc.isPlaying ? "Tạm dừng" : "Phát",
-                            icon: pc.isPlaying ? Icons.pause : Icons.play_arrow,
-                            onTap: widget.onPlayPause,
-                          ),
-                          _iconBtnAsync(
-                            tooltip: voice.isListening ? "Dừng mic" : "Bật mic",
-                            icon: voice.isListening ? Icons.mic : Icons.mic_none,
-                            onTap: widget.onMic,
-                          ),
-                          _iconBtnSync(
-                            tooltip: pc.repeat ? "Tắt lặp" : "Lặp lại",
-                            icon: pc.repeat ? Icons.repeat_one : Icons.repeat,
-                            onTap: () => context.read<PlayerController>().toggleRepeat(),
-                          ),
-
-                          // ✅ Settings đặt cạnh Repeat (thay cho Danh sách)
-                          _iconBtnSync(
-                            tooltip: "Cài đặt giọng đọc",
-                            icon: Icons.settings,
-                            onTap: () {
-                              showModalBottomSheet(
-                                context: context,
-                                showDragHandle: true,
-                                builder: (_) => const PlayerSettingsSheet(),
-                              );
-                            },
-                          ),
-
-                          // ✅ mũi tên lên/xuống như app nghe nhạc
-                          _iconBtnSync(
-                            tooltip: _expanded ? "Thu nhỏ" : "Mở rộng",
-                            icon: _expanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up,
-                            onTap: _toggleExpand,
-                          ),
                         ],
-                      ),
-
-                      // ===== EXPANDED CONTENT (bỏ nút danh sách) =====
-                      if (_expanded) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white24),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                pc.title,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-
-                              // ✅ Hiển thị đầy đủ nội dung đang đọc
-                              Text(
-                                line2,
-                                style: const TextStyle(color: Colors.white70, height: 1.35),
-                              ),
-                            ],
-                          ),
-                        ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -195,27 +221,29 @@ class _PlayerSlidingPanelState extends State<PlayerSlidingPanel> {
     );
   }
 
-  Widget _iconBtnAsync({
+  Widget _circleIconButton({
     required String tooltip,
     required IconData icon,
-    required Future<void> Function() onTap,
+    required VoidCallback onPressed,
   }) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: () async => onTap(),
-      icon: Icon(icon, color: Colors.white),
-    );
-  }
-
-  Widget _iconBtnSync({
-    required String tooltip,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onTap,
-      icon: Icon(icon, color: Colors.white),
+    return Padding(
+      padding: const EdgeInsets.only(left: 2),
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: Colors.white, size: 19),
+          ),
+        ),
+      ),
     );
   }
 }
