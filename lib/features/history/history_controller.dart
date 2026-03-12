@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+
+import '../../core/tts/tts_service.dart';
 import '../../data/models/history_models.dart';
 import '../../data/services/history_api.dart';
-import '../../core/tts/tts_service.dart';
-import '../../core/errors/error_utils.dart';
 
 class HistoryController extends ChangeNotifier {
   final HistoryApi api;
@@ -10,39 +10,44 @@ class HistoryController extends ChangeNotifier {
 
   bool loading = false;
   List<HistoryItem> items = [];
-  String? lastError;
 
   HistoryController(this.api, this.tts);
 
-  Future<void> load({String? type, int limit = 100}) async {
-    if (loading) return; // ✅ đặt ngay đầu hàm
-
+  Future<void> load({
+    String? type,
+    bool announce = false,
+  }) async {
     loading = true;
-    lastError = null;
     notifyListeners();
 
     try {
-      items = await api.list(type: type, limit: limit);
-    } catch (e) {
-      lastError = ErrorUtils.message(e);
-      await tts.speak(lastError!);
+      items = await api.list(type: type, limit: 100);
+      if (announce) {
+        await tts.speak("Đã tải lịch sử.");
+      }
     } finally {
       loading = false;
       notifyListeners();
     }
   }
 
-  Future<void> remove(int id) async {
-    try {
-      await api.delete(id);
-      items.removeWhere((e) => e.id == id);
-      notifyListeners();
-      await tts.speak("Đã xoá mục lịch sử.");
-    } catch (e) {
-      final msg = ErrorUtils.message(e);
-      await tts.speak(msg);
-    }
+  Future<void> reloadReadUrl() async {
+    await load(type: "read_url", announce: false);
   }
 
-  Future<void> speakItem(String text) => tts.speak(text);
+  Future<void> speakItem(String text) async {
+    final value = text.trim();
+    if (value.isEmpty) {
+      await tts.speak("Mục lịch sử này chưa có nội dung.");
+      return;
+    }
+    await tts.speak(value);
+  }
+
+  Future<void> remove(int id) async {
+    await api.delete(id);
+    items.removeWhere((e) => e.id == id);
+    notifyListeners();
+    await tts.speak("Đã xoá mục lịch sử.");
+  }
 }

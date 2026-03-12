@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../auth/auth_controller.dart';
 import '../../auth/login_screen.dart';
 import '../../history/history_controller.dart';
+import '../../history/history_detail_screen.dart';
 
 class HistoryTab extends StatefulWidget {
   const HistoryTab({super.key});
@@ -14,16 +15,14 @@ class HistoryTab extends StatefulWidget {
 }
 
 class _HistoryTabState extends State<HistoryTab> {
-  String? _type; // null=all, "ocr", "caption", "read_url"
+  String? _type;
   bool _requestedInitialLoad = false;
 
   @override
   Widget build(BuildContext context) {
-    // dùng select để chỉ rebuild khi loggedIn đổi
     final loggedIn = context.select<AuthController, bool>((a) => a.loggedIn);
     final c = context.watch<HistoryController>();
 
-    // ✅ chỉ gọi load 1 lần khi đã login và chưa load lần đầu
     if (loggedIn && !_requestedInitialLoad) {
       _requestedInitialLoad = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -31,7 +30,6 @@ class _HistoryTabState extends State<HistoryTab> {
       });
     }
 
-    // nếu logout thì reset để lần login sau load lại
     if (!loggedIn && _requestedInitialLoad) {
       _requestedInitialLoad = false;
     }
@@ -47,10 +45,15 @@ class _HistoryTabState extends State<HistoryTab> {
               children: [
                 const Text(
                   "Đăng nhập để lưu lịch sử\n(Guest mode)",
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
                 const SizedBox(height: 10),
-                const Text("Bạn cần đăng nhập để xem và lưu lịch sử hoạt động."),
+                const Text(
+                  "Bạn cần đăng nhập để xem và lưu lịch sử hoạt động.",
+                ),
                 const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
@@ -58,7 +61,9 @@ class _HistoryTabState extends State<HistoryTab> {
                   child: ElevatedButton(
                     onPressed: () => Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const LoginScreen(),
+                      ),
                     ),
                     child: const Text("Đăng nhập"),
                   ),
@@ -90,7 +95,8 @@ class _HistoryTabState extends State<HistoryTab> {
                   const SizedBox(width: 8),
                   IconButton(
                     tooltip: "Tải lại",
-                    onPressed: () => context.read<HistoryController>().load(type: _type),
+                    onPressed: () =>
+                        context.read<HistoryController>().load(type: _type),
                     icon: const Icon(Icons.refresh),
                   ),
                 ],
@@ -99,7 +105,6 @@ class _HistoryTabState extends State<HistoryTab> {
           ),
         ),
         const SizedBox(height: 10),
-
         if (c.loading)
           const Center(
             child: Padding(
@@ -115,45 +120,97 @@ class _HistoryTabState extends State<HistoryTab> {
         else
           ...c.items.map((it) {
             final preview = it.resultText.trim().replaceAll("\n", " ");
+            final title = preview.isEmpty ? "(Trống)" : preview;
+
             return Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            preview.isEmpty ? "(Trống)" : preview,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => HistoryDetailScreen(item: it),
+                    ),
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (it.createdAt.isNotEmpty)
+                            Text(
+                              it.createdAt,
+                              style: const TextStyle(color: Colors.black54),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        "Loại: ${it.actionType}",
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 13,
+                        ),
+                      ),
+                      if (it.inputData.trim().isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          it.inputData,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontSize: 13,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          (it.createdAt.isEmpty) ? "" : it.createdAt,
-                          style: const TextStyle(color: Colors.black54),
-                        ),
                       ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        TextButton(
-                          onPressed: () => c.speakItem(it.resultText),
-                          child: const Text("Đọc lại"),
-                        ),
-                        const SizedBox(width: 10),
-                        TextButton(
-                          onPressed: () => c.remove(it.id),
-                          style: TextButton.styleFrom(foregroundColor: Colors.red),
-                          child: const Text("Xoá"),
-                        ),
-                      ],
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () => c.speakItem(it.resultText),
+                            child: const Text("Đọc lại"),
+                          ),
+                          const SizedBox(width: 10),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => HistoryDetailScreen(item: it),
+                                ),
+                              );
+                            },
+                            child: const Text("Mở lại"),
+                          ),
+                          const SizedBox(width: 10),
+                          TextButton(
+                            onPressed: () => c.remove(it.id),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                            child: const Text("Xoá"),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -164,6 +221,7 @@ class _HistoryTabState extends State<HistoryTab> {
 
   Widget _chip(String label, String? typeValue) {
     final selected = _type == typeValue;
+
     return ChoiceChip(
       label: Text(label),
       selected: selected,

@@ -7,11 +7,13 @@ import '../../../core/widgets/app_icon.dart';
 class TalkSightBottomBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final double height;
 
   const TalkSightBottomBar({
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.height = 72,
   });
 
   Widget _item({
@@ -59,7 +61,7 @@ class TalkSightBottomBar extends StatelessWidget {
         notchMargin: 4,
         clipBehavior: Clip.antiAlias,
         child: SizedBox(
-          height: 72,
+          height: height,
           child: Row(
             children: [
               Expanded(

@@ -195,7 +195,43 @@ class _HomeScreenState extends State<HomeScreen> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => NewsAssistantScreen(initialQuery: topic),
+          builder: (_) => NewsAssistantScreen(
+            initialQuery: topic,
+            onGoHome: () async {
+              if (!mounted) return;
+              setState(() => _index = 0);
+            },
+            onGoHistory: () async {
+              if (!mounted) return;
+              setState(() => _index = 1);
+            },
+            onGoTasks: () async {
+              if (!mounted) return;
+              setState(() => _index = 2);
+            },
+            onGoSettings: () async {
+              if (!mounted) return;
+              setState(() => _index = 3);
+            },
+            onOpenOcr: () async {
+              if (!mounted) return;
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const OcrScreen()),
+              );
+            },
+            onOpenCaption: () async {
+              if (!mounted) return;
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CaptionScreen()),
+              );
+            },
+            onOpenCamera: () async {
+              if (!mounted) return;
+              await _onCameraPressed();
+            },
+          ),
         ),
       );
       return;

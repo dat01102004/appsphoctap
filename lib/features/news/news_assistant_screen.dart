@@ -10,13 +10,29 @@ import '../voice/voice_controller.dart';
 import 'news_article_payload.dart';
 import 'news_article_screen.dart';
 import 'news_assistant_controller.dart';
-
+import '../auth/auth_controller.dart';
+import '../history/history_controller.dart';
 class NewsAssistantScreen extends StatefulWidget {
   final String? initialQuery;
+
+  final Future<void> Function()? onGoHome;
+  final Future<void> Function()? onGoHistory;
+  final Future<void> Function()? onGoTasks;
+  final Future<void> Function()? onGoSettings;
+  final Future<void> Function()? onOpenOcr;
+  final Future<void> Function()? onOpenCaption;
+  final Future<void> Function()? onOpenCamera;
 
   const NewsAssistantScreen({
     super.key,
     this.initialQuery,
+    this.onGoHome,
+    this.onGoHistory,
+    this.onGoTasks,
+    this.onGoSettings,
+    this.onOpenOcr,
+    this.onOpenCaption,
+    this.onOpenCamera,
   });
 
   @override
@@ -28,7 +44,6 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
   final _url = TextEditingController();
 
   int _tab = 0;
-
   late final NewsAssistantController _news;
 
   @override
@@ -39,6 +54,8 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
     _q.text = widget.initialQuery ?? "";
 
     _news.bindOpenArticle(_openArticle);
+    _news.bindAppIntentHandler(_handleAppIntent);
+    _news.bindOnHistorySaved(_handleHistorySaved);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if ((widget.initialQuery ?? "").trim().isNotEmpty) {
@@ -52,6 +69,8 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
   @override
   void dispose() {
     _news.unbindOpenArticle();
+    _news.unbindAppIntentHandler();
+    _news.unbindOnHistorySaved();
     _q.dispose();
     _url.dispose();
     super.dispose();
@@ -60,36 +79,105 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
   Future<void> _openArticle(NewsArticlePayload article) async {
     if (!mounted) return;
 
-    await Navigator.push(
+    final result = await Navigator.push<dynamic>(
       context,
       MaterialPageRoute(
         builder: (_) => NewsArticleScreen(article: article),
       ),
     );
+
+    if (!mounted) return;
+
+    if (result == 'askNextAction' || result == true) {
+      await Future.delayed(const Duration(milliseconds: 650));
+      await _news.onArticleFinished();
+    }
+  }
+  Future<void> _handleHistorySaved(int historyId) async {
+    if (!mounted) return;
+
+    try {
+      await context.read<HistoryController>().load(
+        type: 'read_url',
+        announce: false,
+      );
+    } catch (_) {
+      // Không chặn flow đọc báo nếu reload lịch sử lỗi
+    }
+  }
+  Future<void> _popToRoot() async {
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    await Future.delayed(const Duration(milliseconds: 120));
+  }
+
+  Future<void> _handleAppIntent(AppVoiceIntent intent) async {
+    if (!mounted) return;
+
+    switch (intent) {
+      case AppVoiceIntent.home:
+        await _popToRoot();
+        if (widget.onGoHome != null) {
+          await widget.onGoHome!();
+        }
+        break;
+
+      case AppVoiceIntent.history:
+        await _popToRoot();
+        if (widget.onGoHistory != null) {
+          await widget.onGoHistory!();
+        }
+        break;
+
+      case AppVoiceIntent.tasks:
+        await _popToRoot();
+        if (widget.onGoTasks != null) {
+          await widget.onGoTasks!();
+        }
+        break;
+
+      case AppVoiceIntent.settings:
+        await _popToRoot();
+        if (widget.onGoSettings != null) {
+          await widget.onGoSettings!();
+        }
+        break;
+
+      case AppVoiceIntent.ocr:
+        await _popToRoot();
+        if (widget.onOpenOcr != null) {
+          await widget.onOpenOcr!();
+        }
+        break;
+
+      case AppVoiceIntent.caption:
+        await _popToRoot();
+        if (widget.onOpenCaption != null) {
+          await widget.onOpenCaption!();
+        }
+        break;
+
+      case AppVoiceIntent.camera:
+        await _popToRoot();
+        if (widget.onOpenCamera != null) {
+          await widget.onOpenCamera!();
+        }
+        break;
+
+      case AppVoiceIntent.stop:
+        break;
+    }
   }
 
   Future<void> _toggleMic() async {
     final voice = context.read<VoiceController>();
-    final tts = context.read<TtsService>();
-    final news = context.read<NewsAssistantController>();
 
     if (voice.isListening) {
       await voice.stop();
       return;
     }
 
-    await tts.speak(
-      "Bạn muốn làm gì? Bạn có thể nói: bài 1, bài 2, đọc lại danh sách, hoặc thoát.",
-    );
-
-    await voice.start(
-      onFinal: (text) async {
-        final handled = await news.handleUtterance(text);
-        if (!handled) {
-          await tts.speak("Mình chưa hiểu. Bạn nói: bài số mấy, hoặc đọc lại danh sách.");
-        }
-      },
-    );
+    await _news.listenForCurrentStage(force: true);
   }
 
   Future<void> _search() async {
@@ -208,6 +296,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                           ),
                           prefixIcon: const Icon(Icons.search),
                         ),
+                        onSubmitted: (_) => _search(),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -241,7 +330,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                           child: Text(
                             voice.isListening
                                 ? "Đang nghe: ${voice.lastWords}"
-                                : "Gợi ý: nói “bài 1”, “đọc lại danh sách”, “thoát”",
+                                : "Gợi ý: nói “bài 1”, “đọc lại danh sách”, “quét chữ”, “mô tả ảnh”, “lịch sử”, “tác vụ”, “cài đặt”, “camera”",
                             style: const TextStyle(color: Colors.black54),
                           ),
                         ),

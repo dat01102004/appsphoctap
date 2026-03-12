@@ -10,15 +10,23 @@ class ApiException implements Exception {
   });
 
   String friendlyMessage() {
-    if (statusCode == 429 || statusCode == 503) {
+    if (statusCode == 429) {
       if (retryAfterSeconds != null && retryAfterSeconds! > 0) {
-        return "Gemini đang quá tải, thử lại sau ${retryAfterSeconds}s.";
+        return 'Bạn đang gửi quá nhiều yêu cầu, vui lòng thử lại sau ${retryAfterSeconds}s.';
       }
-      return "Gemini đang quá tải, vui lòng thử lại sau.";
+      return 'Bạn đang gửi quá nhiều yêu cầu, vui lòng thử lại sau.';
     }
+
+    if (statusCode == 503) {
+      if (retryAfterSeconds != null && retryAfterSeconds! > 0) {
+        return 'Dịch vụ AI đang bận, vui lòng thử lại sau ${retryAfterSeconds}s.';
+      }
+      return 'Dịch vụ AI đang bận, vui lòng thử lại sau.';
+    }
+
     return message;
   }
 
   @override
-  String toString() => "ApiException($statusCode): $message";
+  String toString() => 'ApiException($statusCode): $message';
 }

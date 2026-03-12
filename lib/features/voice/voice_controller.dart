@@ -7,10 +7,11 @@ class VoiceController extends ChangeNotifier {
 
   bool initialized = false;
   bool isListening = false;
-  String lastWords = "";
+  String lastWords = '';
 
-  String _localeId = "vi_VN";
+  String _localeId = 'vi_VN';
   double soundLevel = 0;
+  int _sessionId = 0;
 
   Future<void> init() async {
     if (initialized) return;
@@ -23,17 +24,26 @@ class VoiceController extends ChangeNotifier {
     }
 
     final ok = await _stt.initialize(
-      onStatus: (_) {},
-      onError: (_) {},
+      onStatus: (status) {
+        if (status.toLowerCase().contains('notlistening')) {
+          isListening = false;
+          notifyListeners();
+        }
+      },
+      onError: (_) {
+        isListening = false;
+        notifyListeners();
+      },
     );
 
     if (ok) {
-      // chọn locale vi_* nếu có
       try {
         final locales = await _stt.locales();
-        final vi = locales.where((l) => l.localeId.toLowerCase().startsWith("vi")).toList();
+        final vi = locales
+            .where((l) => l.localeId.toLowerCase().startsWith('vi'))
+            .toList();
         if (vi.isNotEmpty) {
-          _localeId = vi.first.localeId; // thường là vi_VN
+          _localeId = vi.first.localeId;
         } else {
           final sys = await _stt.systemLocale();
           if (sys != null) _localeId = sys.localeId;
@@ -51,14 +61,12 @@ class VoiceController extends ChangeNotifier {
     await init();
     if (!_stt.isAvailable) return;
 
-    // reset
-    lastWords = "";
+    final sessionId = ++_sessionId;
+
+    lastWords = '';
     soundLevel = 0;
 
-    // tránh trường hợp đang listen dở
     await _stt.stop();
-
-    // delay nhỏ để tránh cắt đầu câu (rất hay gặp)
     await Future.delayed(const Duration(milliseconds: 250));
 
     isListening = true;
@@ -71,10 +79,13 @@ class VoiceController extends ChangeNotifier {
       listenFor: const Duration(seconds: 10),
       pauseFor: const Duration(seconds: 2),
       onSoundLevelChange: (lvl) {
+        if (sessionId != _sessionId) return;
         soundLevel = lvl;
         notifyListeners();
       },
       onResult: (res) {
+        if (sessionId != _sessionId) return;
+
         lastWords = res.recognizedWords;
         notifyListeners();
 
@@ -88,8 +99,10 @@ class VoiceController extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _sessionId++;
     await _stt.stop();
     isListening = false;
+    soundLevel = 0;
     notifyListeners();
   }
 }
