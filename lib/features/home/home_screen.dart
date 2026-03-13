@@ -195,8 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => NewsAssistantScreen(
-            initialQuery: topic,
+          builder: (_) => OcrScreen(
             onGoHome: () async {
               if (!mounted) return;
               setState(() => _index = 0);
@@ -213,11 +212,79 @@ class _HomeScreenState extends State<HomeScreen> {
               if (!mounted) return;
               setState(() => _index = 3);
             },
-            onOpenOcr: () async {
+            onOpenNews: () async {
               if (!mounted) return;
               await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const OcrScreen()),
+                MaterialPageRoute(
+                  builder: (_) => NewsAssistantScreen(
+                    onGoHome: () async {
+                      if (!mounted) return;
+                      setState(() => _index = 0);
+                    },
+                    onGoHistory: () async {
+                      if (!mounted) return;
+                      setState(() => _index = 1);
+                    },
+                    onGoTasks: () async {
+                      if (!mounted) return;
+                      setState(() => _index = 2);
+                    },
+                    onGoSettings: () async {
+                      if (!mounted) return;
+                      setState(() => _index = 3);
+                    },
+                    onOpenOcr: () async {
+                      if (!mounted) return;
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => OcrScreen(
+                            onGoHome: () async {
+                              if (!mounted) return;
+                              setState(() => _index = 0);
+                            },
+                            onGoHistory: () async {
+                              if (!mounted) return;
+                              setState(() => _index = 1);
+                            },
+                            onGoTasks: () async {
+                              if (!mounted) return;
+                              setState(() => _index = 2);
+                            },
+                            onGoSettings: () async {
+                              if (!mounted) return;
+                              setState(() => _index = 3);
+                            },
+                            onOpenNews: () async {},
+                            onOpenCaption: () async {
+                              if (!mounted) return;
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const CaptionScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                    onOpenCaption: () async {
+                      if (!mounted) return;
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const CaptionScreen(),
+                        ),
+                      );
+                    },
+                    onOpenCamera: () async {
+                      if (!mounted) return;
+                      await _onCameraPressed();
+                    },
+                  ),
+                ),
               );
             },
             onOpenCaption: () async {
@@ -226,10 +293,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(builder: (_) => const CaptionScreen()),
               );
-            },
-            onOpenCamera: () async {
-              if (!mounted) return;
-              await _onCameraPressed();
             },
           ),
         ),
