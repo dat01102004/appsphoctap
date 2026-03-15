@@ -36,7 +36,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const double _fabSize = 66;
-  static const double _bottomBarHeight = 72;
   static const double _playerBottomOffset = 74;
 
   final ImagePicker _picker = ImagePicker();
@@ -98,10 +97,13 @@ class _HomeScreenState extends State<HomeScreen> {
       final text = voice.lastWords.trim().isEmpty
           ? 'Đang nghe...'
           : 'Đang nghe: ${voice.lastWords}';
+
       player.setNow(
         _lastSpokenTitle,
         text,
-        newDetails: voice.lastWords.trim().isEmpty ? 'Đang nghe...' : voice.lastWords,
+        newDetails: voice.lastWords.trim().isEmpty
+            ? 'Đang nghe...'
+            : voice.lastWords,
       );
       return;
     }
@@ -134,6 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await tts.speak(text);
     } finally {
       player.setPlaying(false);
+
       final voice = context.read<VoiceController>();
       if (!voice.isListening) {
         player.setNow(_lastSpokenTitle, 'Sẵn sàng');
@@ -164,11 +167,88 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _toggleMic() async {
     final voice = context.read<VoiceController>();
+
     if (voice.isListening) {
       await voice.stop();
     } else {
       await _startVoiceOnce();
     }
+  }
+
+  Future<void> _goHome() async {
+    if (!mounted) return;
+    setState(() => _index = 0);
+  }
+
+  Future<void> _goHistory() async {
+    if (!mounted) return;
+    setState(() => _index = 1);
+  }
+
+  Future<void> _goTasks() async {
+    if (!mounted) return;
+    setState(() => _index = 2);
+  }
+
+  Future<void> _goSettings() async {
+    if (!mounted) return;
+    setState(() => _index = 3);
+  }
+
+  Future<void> _openNewsScreen({String? initialQuery}) async {
+    if (!mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NewsAssistantScreen(
+          initialQuery: initialQuery,
+          onGoHome: _goHome,
+          onGoHistory: _goHistory,
+          onGoTasks: _goTasks,
+          onGoSettings: _goSettings,
+          onOpenOcr: _openOcrScreen,
+          onOpenCaption: _openCaptionScreen,
+          onOpenCamera: _onCameraPressed,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openOcrScreen() async {
+    if (!mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OcrScreen(
+          onGoHome: _goHome,
+          onGoHistory: _goHistory,
+          onGoTasks: _goTasks,
+          onGoSettings: _goSettings,
+          onOpenNews: () => _openNewsScreen(),
+          onOpenCaption: _openCaptionScreen,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openCaptionScreen() async {
+    if (!mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CaptionScreen(
+          onGoHome: _goHome,
+          onGoHistory: _goHistory,
+          onGoTasks: _goTasks,
+          onGoSettings: _goSettings,
+          onOpenNews: () => _openNewsScreen(),
+          onOpenOcr: _openOcrScreen,
+        ),
+      ),
+    );
   }
 
   Future<void> _handleVoiceCommand(String raw) async {
@@ -192,111 +272,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final topic = _extractTopic(text);
       await _say('Ok, mình mở trợ lý đọc báo.', title: 'Đọc báo');
       if (!mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => OcrScreen(
-            onGoHome: () async {
-              if (!mounted) return;
-              setState(() => _index = 0);
-            },
-            onGoHistory: () async {
-              if (!mounted) return;
-              setState(() => _index = 1);
-            },
-            onGoTasks: () async {
-              if (!mounted) return;
-              setState(() => _index = 2);
-            },
-            onGoSettings: () async {
-              if (!mounted) return;
-              setState(() => _index = 3);
-            },
-            onOpenNews: () async {
-              if (!mounted) return;
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => NewsAssistantScreen(
-                    onGoHome: () async {
-                      if (!mounted) return;
-                      setState(() => _index = 0);
-                    },
-                    onGoHistory: () async {
-                      if (!mounted) return;
-                      setState(() => _index = 1);
-                    },
-                    onGoTasks: () async {
-                      if (!mounted) return;
-                      setState(() => _index = 2);
-                    },
-                    onGoSettings: () async {
-                      if (!mounted) return;
-                      setState(() => _index = 3);
-                    },
-                    onOpenOcr: () async {
-                      if (!mounted) return;
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => OcrScreen(
-                            onGoHome: () async {
-                              if (!mounted) return;
-                              setState(() => _index = 0);
-                            },
-                            onGoHistory: () async {
-                              if (!mounted) return;
-                              setState(() => _index = 1);
-                            },
-                            onGoTasks: () async {
-                              if (!mounted) return;
-                              setState(() => _index = 2);
-                            },
-                            onGoSettings: () async {
-                              if (!mounted) return;
-                              setState(() => _index = 3);
-                            },
-                            onOpenNews: () async {},
-                            onOpenCaption: () async {
-                              if (!mounted) return;
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const CaptionScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                    onOpenCaption: () async {
-                      if (!mounted) return;
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const CaptionScreen(),
-                        ),
-                      );
-                    },
-                    onOpenCamera: () async {
-                      if (!mounted) return;
-                      await _onCameraPressed();
-                    },
-                  ),
-                ),
-              );
-            },
-            onOpenCaption: () async {
-              if (!mounted) return;
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CaptionScreen()),
-              );
-            },
-          ),
-        ),
-      );
+      await _openNewsScreen(initialQuery: topic);
       return;
     }
 
@@ -336,13 +312,12 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (text.contains('quet') || text.contains('ocr') || text.contains('o c r')) {
+    if (text.contains('quet') ||
+        text.contains('ocr') ||
+        text.contains('o c r')) {
       await _say('Mở quét chữ.', title: 'OCR');
       if (!mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const OcrScreen()),
-      );
+      await _openOcrScreen();
       return;
     }
 
@@ -351,10 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
         text.contains('hinh anh')) {
       await _say('Mở mô tả ảnh.', title: 'Mô tả ảnh');
       if (!mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const CaptionScreen()),
-      );
+      await _openCaptionScreen();
       return;
     }
 
@@ -398,11 +370,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!cameraPermission.isGranted) {
       const message = 'Bạn cần cấp quyền camera để chụp ảnh.';
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text(message)),
         );
       }
+
       await _say(message, title: 'Camera');
       return;
     }
@@ -413,11 +387,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (image == null || !mounted) return;
+
     _openAfterShotSheet(image.path);
   }
 
   void _openAfterShotSheet(String imagePath) {
-    showModalBottomSheet<void>(
+    showModalBottomSheet(
       context: context,
       showDragHandle: true,
       builder: (_) {
@@ -465,8 +440,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       if (mode == VisionMode.ocr) {
         final res = await api.ocr(path);
-        if (!mounted) return;
 
+        if (!mounted) return;
         setState(() => _loading = false);
 
         await Navigator.push(
@@ -493,8 +468,8 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final res = await api.caption(path);
-      if (!mounted) return;
 
+      if (!mounted) return;
       setState(() => _loading = false);
 
       await Navigator.push(
