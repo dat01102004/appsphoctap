@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
@@ -9,8 +10,6 @@ import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../auth/auth_controller.dart';
 import '../history/history_controller.dart';
-import '../news/news_assistant_screen.dart';
-import '../ocr/ocr_screen.dart';
 import '../player/player_controller.dart';
 import '../player/player_sliding_panel.dart';
 import '../voice/voice_controller.dart';
@@ -50,6 +49,8 @@ class CaptionScreen extends StatefulWidget {
 class _CaptionScreenState extends State<CaptionScreen> {
   static const double _playerBottomOffset = 8;
   static const double _actionsBottomOffset = 106;
+
+  final ImagePicker _picker = ImagePicker();
 
   _CaptionStage _stage = _CaptionStage.idle;
   int _listenEpoch = 0;
@@ -145,6 +146,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
     await _voice.start(
       onFinal: (text) async {
         if (!mounted || epoch != _listenEpoch) return;
+
         final n = _norm(text);
 
         if (n.isEmpty || _isEchoFromTts(n)) {
@@ -216,7 +218,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
         n.contains('anh moi') ||
         n == 'mot' ||
         n == 'anh 1') {
-      await _pickRecentGalleryImage(0);
+      await _pickRecentCameraLikeImage(0);
       return;
     }
 
@@ -225,7 +227,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
         n.contains('anh 2') ||
         n.contains('so 2') ||
         n == 'hai') {
-      await _pickRecentGalleryImage(1);
+      await _pickRecentCameraLikeImage(1);
       return;
     }
 
@@ -344,7 +346,33 @@ class _CaptionScreenState extends State<CaptionScreen> {
     await _runCaption(path);
   }
 
-  Future<void> _pickRecentGalleryImage(int index) async {
+  Future<bool> _ensureGalleryPermission() async {
+    final photosPermission = await Permission.photos.request();
+    final storagePermission = await Permission.storage.request();
+
+    if (!photosPermission.isGranted &&
+        !photosPermission.isLimited &&
+        !storagePermission.isGranted) {
+      await _speakWithPlayer(
+        'Bạn chưa cấp quyền thư viện ảnh. Hãy bật quyền ảnh trong cài đặt ứng dụng.',
+        title: 'Mô tả ảnh',
+      );
+      return false;
+    }
+
+    final permission = await PhotoManager.requestPermissionExtend();
+    if (!permission.isAuth && !permission.hasAccess) {
+      await _speakWithPlayer(
+        'Mình chưa được quyền truy cập thư viện ảnh.',
+        title: 'Mô tả ảnh',
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<void> _pickFromGalleryManual() async {
     _stage = _CaptionStage.processing;
     if (mounted) setState(() {});
 
@@ -352,68 +380,172 @@ class _CaptionScreenState extends State<CaptionScreen> {
     await _tts.stop();
 
     try {
-      final photosPermission = await Permission.photos.request();
-      final storagePermission = await Permission.storage.request();
-
-      if (!photosPermission.isGranted &&
-          !photosPermission.isLimited &&
-          !storagePermission.isGranted) {
-        await _speakWithPlayer(
-          'Bạn chưa cấp quyền thư viện ảnh. Hãy bật quyền ảnh trong cài đặt ứng dụng.',
-          title: 'Mô tả ảnh',
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
+      final ok = await _ensureGalleryPermission();
+      if (!ok) {
+        await Future.delayed(const Duration(milliseconds: 350));
         await _askSource();
         return;
       }
 
-      final permission = await PhotoManager.requestPermissionExtend();
-      if (!permission.isAuth && !permission.hasAccess) {
-        await _speakWithPlayer(
-          'Mình chưa được quyền truy cập thư viện ảnh.',
-          title: 'Mô tả ảnh',
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
-        await _askSource();
-        return;
-      }
-
-      final paths = await PhotoManager.getAssetPathList(
-        onlyAll: true,
-        type: RequestType.image,
+      final file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 95,
       );
 
-      if (paths.isEmpty) {
+      if (file == null || file.path.trim().isEmpty) {
+        await Future.delayed(const Duration(milliseconds: 250));
+        await _askSource();
+        return;
+      }
+
+      await _runCaption(file.path);
+    } catch (_) {
+      await _speakWithPlayer(
+        'Có lỗi khi chọn ảnh từ thư viện.',
+        title: 'Mô tả ảnh',
+      );
+      await Future.delayed(const Duration(milliseconds: 350));
+      await _askSource();
+    }
+  }
+
+  int _albumPriority(String name) {
+    final n = _norm(name);
+
+    if (n.contains('camera') ||
+        n.contains('dcim') ||
+        n.contains('camera roll') ||
+        n.contains('100media')) {
+      return 300;
+    }
+
+    if (n.contains('screenshots') ||
+        n.contains('screenshot') ||
+        n.contains('screen shots') ||
+        n.contains('screen_shots') ||
+        n.contains('screen shot') ||
+        n.contains('anh chup man hinh')) {
+      return -300;
+    }
+
+    if (n.contains('download') ||
+        n.contains('zalo') ||
+        n.contains('whatsapp') ||
+        n.contains('facebook') ||
+        n.contains('messenger') ||
+        n.contains('telegram')) {
+      return -80;
+    }
+
+    return 0;
+  }
+
+  int _createdAt(AssetEntity a) => a.createDateSecond ?? 0;
+
+  int _modifiedAt(AssetEntity a) => a.modifiedDateSecond ?? 0;
+
+  bool _isNewerAsset(AssetEntity a, AssetEntity b) {
+    final c = _createdAt(a).compareTo(_createdAt(b));
+    if (c != 0) return c > 0;
+    return _modifiedAt(a) > _modifiedAt(b);
+  }
+
+  Future<void> _pickRecentCameraLikeImage(int index) async {
+    _stage = _CaptionStage.processing;
+    if (mounted) setState(() {});
+
+    await _voice.stop();
+    await _tts.stop();
+
+    try {
+      final ok = await _ensureGalleryPermission();
+      if (!ok) {
+        await Future.delayed(const Duration(milliseconds: 350));
+        await _askSource();
+        return;
+      }
+
+      final albums = await PhotoManager.getAssetPathList(
+        type: RequestType.image,
+        onlyAll: false,
+      );
+
+      if (albums.isEmpty) {
         await _speakWithPlayer(
           'Mình chưa thấy ảnh nào trong thư viện.',
           title: 'Mô tả ảnh',
         );
-        await Future.delayed(const Duration(milliseconds: 400));
+        await Future.delayed(const Duration(milliseconds: 350));
         await _askSource();
         return;
       }
 
-      final recent = await paths.first.getAssetListPaged(page: 0, size: 10);
+      final Map<String, _RankedAsset> rankedById = {};
 
-      if (recent.length <= index) {
+      for (final album in albums) {
+        final assets = await album.getAssetListPaged(
+          page: 0,
+          size: 50,
+        );
+
+        final priority = _albumPriority(album.name);
+
+        for (final asset in assets) {
+          final current = _RankedAsset(
+            asset: asset,
+            priority: priority,
+          );
+
+          final existed = rankedById[asset.id];
+          if (existed == null) {
+            rankedById[asset.id] = current;
+            continue;
+          }
+
+          if (current.priority > existed.priority) {
+            rankedById[asset.id] = current;
+            continue;
+          }
+
+          if (current.priority == existed.priority &&
+              _isNewerAsset(current.asset, existed.asset)) {
+            rankedById[asset.id] = current;
+          }
+        }
+      }
+
+      final all = rankedById.values.toList()
+        ..sort((a, b) {
+          final p = b.priority.compareTo(a.priority);
+          if (p != 0) return p;
+
+          final c = _createdAt(b.asset).compareTo(_createdAt(a.asset));
+          if (c != 0) return c;
+
+          return _modifiedAt(b.asset).compareTo(_modifiedAt(a.asset));
+        });
+
+      final cameraLike = all.where((e) => e.priority >= 300).toList();
+
+      if (cameraLike.length <= index) {
         await _speakWithPlayer(
           index == 0
-              ? 'Mình chưa lấy được ảnh mới nhất.'
-              : 'Mình chưa thấy đủ ảnh để lấy ảnh thứ 2.',
+              ? 'Mình chưa thấy ảnh chụp từ camera đủ mới.'
+              : 'Mình chưa thấy đủ ảnh chụp từ camera để lấy ảnh thứ 2.',
           title: 'Mô tả ảnh',
         );
-        await Future.delayed(const Duration(milliseconds: 400));
+        await Future.delayed(const Duration(milliseconds: 350));
         await _askGalleryChoice();
         return;
       }
 
-      final file = await recent[index].file;
+      final file = await cameraLike[index].asset.file;
       if (file == null || !file.existsSync()) {
         await _speakWithPlayer(
-          'Mình chưa mở được ảnh trong thư viện.',
+          'Mình chưa mở được ảnh chụp từ camera.',
           title: 'Mô tả ảnh',
         );
-        await Future.delayed(const Duration(milliseconds: 400));
+        await Future.delayed(const Duration(milliseconds: 350));
         await _askGalleryChoice();
         return;
       }
@@ -424,7 +556,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
         'Có lỗi khi lấy ảnh từ thư viện.',
         title: 'Mô tả ảnh',
       );
-      await Future.delayed(const Duration(milliseconds: 400));
+      await Future.delayed(const Duration(milliseconds: 350));
       await _askGalleryChoice();
     }
   }
@@ -441,12 +573,13 @@ class _CaptionScreenState extends State<CaptionScreen> {
         title: 'Mô tả ảnh',
       );
 
-      final res = await _caption.runCaption(path, speakResult: false);
+      await _caption.runCaption(path, speakResult: false);
+
       final result = _caption.caption.trim().isEmpty
           ? 'Mình chưa mô tả được ảnh rõ ràng.'
           : _caption.caption.trim();
 
-      await _reloadHistoryIfNeeded(res?.historyId as int?);
+      await _reloadHistoryIfNeeded(_caption.historyId);
       await _speakWithPlayer(result, title: 'Kết quả mô tả');
       await _askNextAction();
     } catch (_) {
@@ -483,7 +616,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
     _lastSpokenTitle = title;
     _lastSpokenText = value;
 
-    final preview = value.length > 88 ? "${value.substring(0, 88)}..." : value;
+    final preview = value.length > 88 ? '${value.substring(0, 88)}...' : value;
     _player.setNow(title, preview, newDetails: value);
 
     await _tts.stop();
@@ -717,7 +850,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
                       icon: Icons.photo_library_rounded,
                       text: 'Chọn ảnh từ thư viện',
                       filled: false,
-                      onTap: c.loading ? null : _askGalleryChoice,
+                      onTap: c.loading ? null : _pickFromGalleryManual,
                     ),
                   ),
                 ],
@@ -796,4 +929,14 @@ class _ActionButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _RankedAsset {
+  final AssetEntity asset;
+  final int priority;
+
+  const _RankedAsset({
+    required this.asset,
+    required this.priority,
+  });
 }

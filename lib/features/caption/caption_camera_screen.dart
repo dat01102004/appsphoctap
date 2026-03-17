@@ -18,9 +18,11 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
   CameraController? _camera;
   bool _initializing = true;
   bool _capturing = false;
+
   int _listenEpoch = 0;
   String _lastPromptNorm = '';
   bool _autoShotTriggered = false;
+  bool _allowAutoShot = false;
 
   @override
   void initState() {
@@ -90,6 +92,8 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
 
   Future<void> _askReadyToCapture() async {
     _autoShotTriggered = false;
+    _allowAutoShot = false;
+
     await _promptAndListen(
       'Bạn muốn mình bấm nút chụp chưa? Khi sẵn sàng, bạn nói chụp.',
       _handleCaptureUtterance,
@@ -106,6 +110,8 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
     final voice = context.read<VoiceController>();
     final epoch = ++_listenEpoch;
 
+    _allowAutoShot = false;
+
     await voice.stop();
     await tts.stop();
 
@@ -115,9 +121,14 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
 
     if (!mounted || epoch != _listenEpoch) return;
 
+    _allowAutoShot = true;
+
     await voice.start(
       onFinal: (text) async {
         if (!mounted || epoch != _listenEpoch) return;
+
+        _allowAutoShot = false;
+
         final n = _norm(text);
 
         if (n.isEmpty || _isEcho(n)) {
@@ -167,12 +178,26 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
     await _askReadyToCapture();
   }
 
-  void _watchAutoShot(String words) {
-    final n = _norm(words);
+  void _watchAutoShot(
+      String words,
+      bool listening,
+      ) {
+    if (!_allowAutoShot) return;
+    if (!listening) return;
     if (_autoShotTriggered) return;
 
-    if (n.contains('chup') || n.contains('bam chup')) {
+    final n = _norm(words);
+    if (n.isEmpty) return;
+
+    if (n == 'chup' ||
+        n == 'bam chup' ||
+        n == 'chot' ||
+        n == 'roi' ||
+        n == 'san sang' ||
+        n == 'ok') {
       _autoShotTriggered = true;
+      _allowAutoShot = false;
+
       Future.microtask(() async {
         await _takePicture();
       });
@@ -184,6 +209,9 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
     final camera = _camera;
     if (camera == null || !camera.value.isInitialized) return;
 
+    _allowAutoShot = false;
+    _autoShotTriggered = true;
+
     setState(() => _capturing = true);
 
     try {
@@ -192,6 +220,10 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
       Navigator.pop(context, file.path);
     } catch (_) {
       if (!mounted) return;
+
+      _allowAutoShot = false;
+      _autoShotTriggered = false;
+
       setState(() => _capturing = false);
       await context.read<TtsService>().speak(
         'Mình chưa chụp được ảnh. Bạn thử lại nhé.',
@@ -219,7 +251,11 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
   @override
   Widget build(BuildContext context) {
     final voice = context.watch<VoiceController>();
-    _watchAutoShot(voice.lastWords);
+
+    _watchAutoShot(
+      voice.lastWords,
+      voice.isListening,
+    );
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -257,7 +293,10 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
                     ? 'Đang nghe lệnh chụp...'
                     : 'Đang nghe: ${voice.lastWords}')
                     : 'Nói “chụp” để mình tự bấm nút chụp.',
-                style: const TextStyle(color: Colors.white, height: 1.4),
+                style: const TextStyle(
+                  color: Colors.white,
+                  height: 1.4,
+                ),
               ),
             ),
           ),

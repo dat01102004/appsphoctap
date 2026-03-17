@@ -1,16 +1,15 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../auth/auth_controller.dart';
-import '../caption/caption_screen.dart';
 import '../history/history_controller.dart';
-import '../news/news_assistant_screen.dart';
 import '../player/player_controller.dart';
 import '../player/player_sliding_panel.dart';
 import '../voice/voice_controller.dart';
@@ -50,6 +49,8 @@ class OcrScreen extends StatefulWidget {
 class _OcrScreenState extends State<OcrScreen> {
   static const double _playerBottomOffset = 8;
   static const double _actionsBottomOffset = 106;
+
+  final ImagePicker _picker = ImagePicker();
 
   _OcrStage _stage = _OcrStage.idle;
   int _listenEpoch = 0;
@@ -97,7 +98,7 @@ class _OcrScreenState extends State<OcrScreen> {
     if (mounted) setState(() {});
 
     await _promptAndListen(
-      "Bạn muốn chụp ảnh để quét hay chọn ảnh từ thư viện?",
+      'Bạn muốn chụp ảnh để quét hay chọn ảnh từ thư viện?',
       _handleSourceUtterance,
       settleMs: 1450,
     );
@@ -108,7 +109,7 @@ class _OcrScreenState extends State<OcrScreen> {
     if (mounted) setState(() {});
 
     await _promptAndListen(
-      "Bạn muốn quét ảnh mới nhất hay ảnh thứ 2?",
+      'Bạn muốn quét ảnh mới nhất hay ảnh thứ 2?',
       _handleGalleryChoiceUtterance,
       settleMs: 1400,
     );
@@ -119,7 +120,7 @@ class _OcrScreenState extends State<OcrScreen> {
     if (mounted) setState(() {});
 
     await _promptAndListen(
-      "Bạn muốn sử dụng thêm tính năng gì khác? Bạn có thể nói: quét lại, đọc báo, mô tả ảnh, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.",
+      'Bạn muốn sử dụng thêm tính năng gì khác? Bạn có thể nói: quét lại, mô tả ảnh, đọc báo, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
       _handleNextActionUtterance,
       settleMs: 1500,
     );
@@ -136,7 +137,7 @@ class _OcrScreenState extends State<OcrScreen> {
     await _tts.stop();
 
     _lastPromptNorm = _norm(prompt);
-    await _speakWithPlayer(prompt, title: "OCR");
+    await _speakWithPlayer(prompt, title: 'OCR');
 
     await Future.delayed(Duration(milliseconds: settleMs));
 
@@ -145,6 +146,7 @@ class _OcrScreenState extends State<OcrScreen> {
     await _voice.start(
       onFinal: (text) async {
         if (!mounted || epoch != _listenEpoch) return;
+
         final n = _norm(text);
 
         if (n.isEmpty || _isEchoFromTts(n)) {
@@ -172,17 +174,14 @@ class _OcrScreenState extends State<OcrScreen> {
     const fullPrompts = [
       'ban muon chup anh de quet hay chon anh tu thu vien',
       'ban muon quet anh moi nhat hay anh thu 2',
-      'ban muon su dung them tinh nang gi khac ban co the noi quet lai doc bao mo ta anh lich su tac vu cai dat trang chu hoac thoat',
+      'ban muon su dung them tinh nang gi khac ban co the noi quet lai mo ta anh doc bao lich su tac vu cai dat trang chu hoac thoat',
     ];
 
     for (final p in fullPrompts) {
       if (n == p) return true;
     }
 
-    // Chỉ chặn khi STT nghe lại gần như nguyên câu prompt,
-    // không chặn các  trả lời ngắn như "chọn ảnh từ thư viện", "ảnh mới nhất", "ảnh thứ 2"
     if (n.length >= 28 && _lastPromptNorm.contains(n)) return true;
-
     return false;
   }
 
@@ -219,7 +218,7 @@ class _OcrScreenState extends State<OcrScreen> {
         n.contains('anh moi') ||
         n == 'mot' ||
         n == 'anh 1') {
-      await _pickRecentGalleryImage(0);
+      await _pickRecentCameraLikeImage(0);
       return;
     }
 
@@ -228,7 +227,7 @@ class _OcrScreenState extends State<OcrScreen> {
         n.contains('anh 2') ||
         n.contains('so 2') ||
         n == 'hai') {
-      await _pickRecentGalleryImage(1);
+      await _pickRecentCameraLikeImage(1);
       return;
     }
 
@@ -256,20 +255,20 @@ class _OcrScreenState extends State<OcrScreen> {
       return;
     }
 
+    if (n.contains('mo ta anh') || n.contains('caption')) {
+      await _popToRoot();
+      if (widget.onOpenCaption != null) {
+        await widget.onOpenCaption!();
+      }
+      return;
+    }
+
     if (n.contains('doc bao') ||
         n.contains('tin tuc') ||
         n.contains('tin moi')) {
       await _popToRoot();
       if (widget.onOpenNews != null) {
         await widget.onOpenNews!();
-      }
-      return;
-    }
-
-    if (n.contains('mo ta anh') || n.contains('caption')) {
-      await _popToRoot();
-      if (widget.onOpenCaption != null) {
-        await widget.onOpenCaption!();
       }
       return;
     }
@@ -312,8 +311,8 @@ class _OcrScreenState extends State<OcrScreen> {
     }
 
     await _speakWithPlayer(
-      "Mình chưa hiểu. Bạn có thể nói quét lại, đọc báo, mô tả ảnh, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.",
-      title: "OCR",
+      'Mình chưa hiểu. Bạn có thể nói quét lại, mô tả ảnh, đọc báo, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
+      title: 'OCR',
     );
     await Future.delayed(const Duration(milliseconds: 450));
     await _askNextAction();
@@ -347,7 +346,33 @@ class _OcrScreenState extends State<OcrScreen> {
     await _runOcr(path);
   }
 
-  Future<void> _pickRecentGalleryImage(int index) async {
+  Future<bool> _ensureGalleryPermission() async {
+    final photosPermission = await Permission.photos.request();
+    final storagePermission = await Permission.storage.request();
+
+    if (!photosPermission.isGranted &&
+        !photosPermission.isLimited &&
+        !storagePermission.isGranted) {
+      await _speakWithPlayer(
+        'Bạn chưa cấp quyền thư viện ảnh. Hãy bật quyền ảnh trong cài đặt ứng dụng.',
+        title: 'OCR',
+      );
+      return false;
+    }
+
+    final permission = await PhotoManager.requestPermissionExtend();
+    if (!permission.isAuth && !permission.hasAccess) {
+      await _speakWithPlayer(
+        'Mình chưa được quyền truy cập thư viện ảnh.',
+        title: 'OCR',
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<void> _pickFromGalleryManual() async {
     _stage = _OcrStage.processing;
     if (mounted) setState(() {});
 
@@ -355,53 +380,172 @@ class _OcrScreenState extends State<OcrScreen> {
     await _tts.stop();
 
     try {
-      final permission = await PhotoManager.requestPermissionExtend();
-      if (!permission.isAuth && !permission.hasAccess) {
-        await _speakWithPlayer(
-          "Bạn cần cấp quyền thư viện ảnh để mình lấy ảnh gần nhất.",
-          title: "OCR",
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
+      final ok = await _ensureGalleryPermission();
+      if (!ok) {
+        await Future.delayed(const Duration(milliseconds: 350));
         await _askSource();
         return;
       }
 
-      final paths = await PhotoManager.getAssetPathList(
-        onlyAll: true,
-        type: RequestType.image,
+      final file = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 95,
       );
 
-      if (paths.isEmpty) {
-        await _speakWithPlayer(
-          "Mình chưa thấy ảnh nào trong thư viện.",
-          title: "OCR",
-        );
-        await Future.delayed(const Duration(milliseconds: 400));
+      if (file == null || file.path.trim().isEmpty) {
+        await Future.delayed(const Duration(milliseconds: 250));
         await _askSource();
         return;
       }
 
-      final recent = await paths.first.getAssetListPaged(page: 0, size: 10);
+      await _runOcr(file.path);
+    } catch (_) {
+      await _speakWithPlayer(
+        'Có lỗi khi chọn ảnh từ thư viện.',
+        title: 'OCR',
+      );
+      await Future.delayed(const Duration(milliseconds: 350));
+      await _askSource();
+    }
+  }
 
-      if (recent.length <= index) {
+  int _albumPriority(String name) {
+    final n = _norm(name);
+
+    if (n.contains('camera') ||
+        n.contains('dcim') ||
+        n.contains('camera roll') ||
+        n.contains('100media')) {
+      return 300;
+    }
+
+    if (n.contains('screenshots') ||
+        n.contains('screenshot') ||
+        n.contains('screen shots') ||
+        n.contains('screen_shots') ||
+        n.contains('screen shot') ||
+        n.contains('anh chup man hinh')) {
+      return -300;
+    }
+
+    if (n.contains('download') ||
+        n.contains('zalo') ||
+        n.contains('whatsapp') ||
+        n.contains('facebook') ||
+        n.contains('messenger') ||
+        n.contains('telegram')) {
+      return -80;
+    }
+
+    return 0;
+  }
+
+  int _createdAt(AssetEntity a) => a.createDateSecond ?? 0;
+
+  int _modifiedAt(AssetEntity a) => a.modifiedDateSecond ?? 0;
+
+  bool _isNewerAsset(AssetEntity a, AssetEntity b) {
+    final c = _createdAt(a).compareTo(_createdAt(b));
+    if (c != 0) return c > 0;
+    return _modifiedAt(a) > _modifiedAt(b);
+  }
+
+  Future<void> _pickRecentCameraLikeImage(int index) async {
+    _stage = _OcrStage.processing;
+    if (mounted) setState(() {});
+
+    await _voice.stop();
+    await _tts.stop();
+
+    try {
+      final ok = await _ensureGalleryPermission();
+      if (!ok) {
+        await Future.delayed(const Duration(milliseconds: 350));
+        await _askSource();
+        return;
+      }
+
+      final albums = await PhotoManager.getAssetPathList(
+        type: RequestType.image,
+        onlyAll: false,
+      );
+
+      if (albums.isEmpty) {
+        await _speakWithPlayer(
+          'Mình chưa thấy ảnh nào trong thư viện.',
+          title: 'OCR',
+        );
+        await Future.delayed(const Duration(milliseconds: 350));
+        await _askSource();
+        return;
+      }
+
+      final Map<String, _RankedAsset> rankedById = {};
+
+      for (final album in albums) {
+        final assets = await album.getAssetListPaged(
+          page: 0,
+          size: 50,
+        );
+
+        final priority = _albumPriority(album.name);
+
+        for (final asset in assets) {
+          final current = _RankedAsset(
+            asset: asset,
+            priority: priority,
+          );
+
+          final existed = rankedById[asset.id];
+          if (existed == null) {
+            rankedById[asset.id] = current;
+            continue;
+          }
+
+          if (current.priority > existed.priority) {
+            rankedById[asset.id] = current;
+            continue;
+          }
+
+          if (current.priority == existed.priority &&
+              _isNewerAsset(current.asset, existed.asset)) {
+            rankedById[asset.id] = current;
+          }
+        }
+      }
+
+      final all = rankedById.values.toList()
+        ..sort((a, b) {
+          final p = b.priority.compareTo(a.priority);
+          if (p != 0) return p;
+
+          final c = _createdAt(b.asset).compareTo(_createdAt(a.asset));
+          if (c != 0) return c;
+
+          return _modifiedAt(b.asset).compareTo(_modifiedAt(a.asset));
+        });
+
+      final cameraLike = all.where((e) => e.priority >= 300).toList();
+
+      if (cameraLike.length <= index) {
         await _speakWithPlayer(
           index == 0
-              ? "Mình chưa lấy được ảnh mới nhất."
-              : "Mình chưa thấy đủ ảnh để lấy ảnh thứ 2.",
-          title: "OCR",
+              ? 'Mình chưa thấy ảnh chụp từ camera đủ mới.'
+              : 'Mình chưa thấy đủ ảnh chụp từ camera để lấy ảnh thứ 2.',
+          title: 'OCR',
         );
-        await Future.delayed(const Duration(milliseconds: 400));
+        await Future.delayed(const Duration(milliseconds: 350));
         await _askGalleryChoice();
         return;
       }
 
-      final file = await recent[index].file;
+      final file = await cameraLike[index].asset.file;
       if (file == null || !file.existsSync()) {
         await _speakWithPlayer(
-          "Mình chưa mở được ảnh trong thư viện.",
-          title: "OCR",
+          'Mình chưa mở được ảnh chụp từ camera.',
+          title: 'OCR',
         );
-        await Future.delayed(const Duration(milliseconds: 400));
+        await Future.delayed(const Duration(milliseconds: 350));
         await _askGalleryChoice();
         return;
       }
@@ -409,10 +553,10 @@ class _OcrScreenState extends State<OcrScreen> {
       await _runOcr(file.path);
     } catch (_) {
       await _speakWithPlayer(
-        "Có lỗi khi lấy ảnh từ thư viện.",
-        title: "OCR",
+        'Có lỗi khi lấy ảnh từ thư viện.',
+        title: 'OCR',
       );
-      await Future.delayed(const Duration(milliseconds: 400));
+      await Future.delayed(const Duration(milliseconds: 350));
       await _askGalleryChoice();
     }
   }
@@ -425,23 +569,23 @@ class _OcrScreenState extends State<OcrScreen> {
       _latestImagePath = path;
 
       await _speakWithPlayer(
-        "Đang quét chữ, bạn chờ một chút nhé.",
-        title: "OCR",
+        'Đang quét chữ, bạn chờ một chút nhé.',
+        title: 'OCR',
       );
 
-      final res = await _ocr.runOcr(path, speakResult: false);
+      await _ocr.runOcr(path, speakResult: false);
+
       final result = _ocr.text.trim().isEmpty
-          ? "Mình chưa nhận diện được văn bản rõ ràng."
+          ? 'Mình chưa nhận diện được văn bản rõ ràng.'
           : _ocr.text.trim();
 
-      await _reloadHistoryIfNeeded(res.historyId);
-
-      await _speakWithPlayer(result, title: "Kết quả OCR");
+      await _reloadHistoryIfNeeded(_ocr.historyId);
+      await _speakWithPlayer(result, title: 'Kết quả OCR');
       await _askNextAction();
     } catch (_) {
       await _speakWithPlayer(
-        "Có lỗi khi quét chữ. Bạn thử lại nhé.",
-        title: "OCR",
+        'Có lỗi khi quét chữ. Bạn thử lại nhé.',
+        title: 'OCR',
       );
       await Future.delayed(const Duration(milliseconds: 400));
       await _askSource();
@@ -472,7 +616,7 @@ class _OcrScreenState extends State<OcrScreen> {
     _lastSpokenTitle = title;
     _lastSpokenText = value;
 
-    final preview = value.length > 88 ? "${value.substring(0, 88)}..." : value;
+    final preview = value.length > 88 ? '${value.substring(0, 88)}...' : value;
     _player.setNow(title, preview, newDetails: value);
 
     await _tts.stop();
@@ -512,8 +656,8 @@ class _OcrScreenState extends State<OcrScreen> {
 
     if (_lastSpokenText.trim().isEmpty) {
       await _speakWithPlayer(
-        "Bạn chưa có nội dung để phát lại.",
-        title: "OCR",
+        'Bạn chưa có nội dung để phát lại.',
+        title: 'OCR',
       );
       return;
     }
@@ -548,15 +692,15 @@ class _OcrScreenState extends State<OcrScreen> {
   String _hintText() {
     switch (_stage) {
       case _OcrStage.waitingSource:
-        return "Gợi ý: nói “chụp ảnh” hoặc “chọn ảnh từ thư viện”.";
+        return 'Gợi ý: nói “chụp ảnh” hoặc “chọn ảnh từ thư viện”.';
       case _OcrStage.waitingGalleryChoice:
-        return "Gợi ý: nói “ảnh mới nhất” hoặc “ảnh thứ 2”.";
+        return 'Gợi ý: nói “ảnh mới nhất” hoặc “ảnh thứ 2”.';
       case _OcrStage.waitingNextAction:
-        return "Gợi ý: nói “quét lại”, “đọc báo”, “mô tả ảnh”, “lịch sử”, “tác vụ”, “cài đặt”, “trang chủ” hoặc “thoát”.";
+        return 'Gợi ý: nói “quét lại”, “mô tả ảnh”, “đọc báo”, “lịch sử”, “tác vụ”, “cài đặt”, “trang chủ” hoặc “thoát”.';
       case _OcrStage.processing:
-        return "Đang xử lý OCR...";
+        return 'Đang xử lý OCR...';
       case _OcrStage.idle:
-        return "Sẵn sàng.";
+        return 'Sẵn sàng.';
     }
   }
 
@@ -567,7 +711,7 @@ class _OcrScreenState extends State<OcrScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Quét chữ (OCR)"),
+        title: const Text('Quét chữ (OCR)'),
         actions: [
           IconButton(
             onPressed: _toggleMic,
@@ -594,8 +738,8 @@ class _OcrScreenState extends State<OcrScreen> {
                 child: Text(
                   voice.isListening
                       ? (voice.lastWords.trim().isEmpty
-                      ? "Đang nghe lệnh..."
-                      : "Đang nghe: ${voice.lastWords}")
+                      ? 'Đang nghe lệnh...'
+                      : 'Đang nghe: ${voice.lastWords}')
                       : _hintText(),
                   style: const TextStyle(
                     color: Colors.black54,
@@ -621,7 +765,7 @@ class _OcrScreenState extends State<OcrScreen> {
                         children: [
                           const Expanded(
                             child: Text(
-                              "Kết quả OCR",
+                              'Kết quả OCR',
                               style: TextStyle(
                                 fontSize: 28,
                                 fontWeight: FontWeight.w900,
@@ -633,7 +777,7 @@ class _OcrScreenState extends State<OcrScreen> {
                                 ? null
                                 : () => _speakWithPlayer(
                               c.text,
-                              title: "Kết quả OCR",
+                              title: 'Kết quả OCR',
                             ),
                             icon: const Icon(Icons.volume_up_rounded),
                           ),
@@ -641,7 +785,7 @@ class _OcrScreenState extends State<OcrScreen> {
                       ),
                       const SizedBox(height: 8),
                       SelectableText(
-                        c.text.trim().isEmpty ? "(Trống)" : c.text,
+                        c.text.trim().isEmpty ? '(Trống)' : c.text,
                         style: const TextStyle(
                           fontSize: 16,
                           height: 1.6,
@@ -695,7 +839,7 @@ class _OcrScreenState extends State<OcrScreen> {
                   Expanded(
                     child: _ActionButton(
                       icon: Icons.camera_alt_rounded,
-                      text: "Chụp ảnh để quét",
+                      text: 'Chụp ảnh để quét',
                       filled: true,
                       onTap: c.loading ? null : _openCameraCaptureFlow,
                     ),
@@ -704,9 +848,9 @@ class _OcrScreenState extends State<OcrScreen> {
                   Expanded(
                     child: _ActionButton(
                       icon: Icons.photo_library_rounded,
-                      text: "Chọn ảnh từ thư viện",
+                      text: 'Chọn ảnh từ thư viện',
                       filled: false,
-                      onTap: c.loading ? null : _askGalleryChoice,
+                      onTap: c.loading ? null : _pickFromGalleryManual,
                     ),
                   ),
                 ],
@@ -785,4 +929,14 @@ class _ActionButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _RankedAsset {
+  final AssetEntity asset;
+  final int priority;
+
+  const _RankedAsset({
+    required this.asset,
+    required this.priority,
+  });
 }

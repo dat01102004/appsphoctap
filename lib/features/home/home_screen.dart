@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/errors/error_utils.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_icons.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/app_icon.dart';
-import '../../data/services/vision_api.dart';
 import '../caption/caption_screen.dart';
 import '../news/news_assistant_controller.dart';
 import '../news/news_assistant_screen.dart';
@@ -16,7 +12,7 @@ import '../ocr/ocr_screen.dart';
 import '../player/player_controller.dart';
 import '../player/player_sliding_panel.dart';
 import '../read_url/read_url_screen.dart';
-import '../vision/vision_result_screen.dart';
+import '../vision/live_vision_screen.dart';
 import '../voice/voice_controller.dart';
 import 'tabs/history_tab.dart';
 import 'tabs/home_tab.dart';
@@ -24,8 +20,6 @@ import 'tabs/settings_tab.dart';
 import 'tabs/tasks_tab.dart';
 import 'widgets/talksight_app_bar.dart';
 import 'widgets/talksight_bottom_bar.dart';
-
-enum VisionMode { ocr, caption }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -38,14 +32,14 @@ class _HomeScreenState extends State<HomeScreen> {
   static const double _fabSize = 66;
   static const double _playerBottomOffset = 74;
 
-  final ImagePicker _picker = ImagePicker();
-
   int _index = 0;
-  bool _loading = false;
   bool _greeted = false;
 
   String _lastSpokenText = '';
   String _lastSpokenTitle = 'TalkSight';
+  String _lastPromptNorm = '';
+
+  int _listenEpoch = 0;
 
   VoiceController? _voiceRef;
   bool _voiceListenerAttached = false;
@@ -79,9 +73,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _listenEpoch++;
     if (_voiceListenerAttached && _voiceRef != null) {
       _voiceRef!.removeListener(_syncVoiceToPlayer);
     }
+    context.read<VoiceController>().stop();
+    context.read<TtsService>().stop();
     super.dispose();
   }
 
@@ -118,10 +115,12 @@ class _HomeScreenState extends State<HomeScreen> {
         String? title,
       }) async {
     final tts = context.read<TtsService>();
+    final voice = context.read<VoiceController>();
     final player = context.read<PlayerController>();
 
     _lastSpokenText = text;
     _lastSpokenTitle = title ?? _lastSpokenTitle;
+    _lastPromptNorm = _norm(text);
 
     final preview = text.length > 84 ? '${text.substring(0, 84)}...' : text;
 
@@ -133,11 +132,12 @@ class _HomeScreenState extends State<HomeScreen> {
     player.setPlaying(true);
 
     try {
+      await voice.stop();
+      await tts.stop();
       await tts.speak(text);
     } finally {
       player.setPlaying(false);
 
-      final voice = context.read<VoiceController>();
       if (!voice.isListening) {
         player.setNow(_lastSpokenTitle, 'Sẵn sàng');
       }
@@ -145,58 +145,114 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _startVoiceOnce() async {
-    final voice = context.read<VoiceController>();
+    if (!mounted || _index != 0) return;
 
+    final voice = context.read<VoiceController>();
+    final epoch = ++_listenEpoch;
+
+    await voice.stop();
     await Future.delayed(const Duration(milliseconds: 350));
+
+    if (!mounted || epoch != _listenEpoch || _index != 0) return;
 
     await voice.start(
       onFinal: (text) async {
-        if (text.trim().isEmpty) {
+        if (!mounted || epoch != _listenEpoch) return;
+
+        final raw = text.trim();
+        final normalized = _norm(raw);
+
+        if (raw.isEmpty) {
           await _say(
             'Mình chưa nghe rõ. Bạn nói lại giúp mình nhé.',
             title: 'TalkSight',
           );
+          if (!mounted || epoch != _listenEpoch || _index != 0) return;
           await _startVoiceOnce();
           return;
         }
 
-        await _handleVoiceCommand(text);
+        if (_isPromptEcho(normalized)) {
+          if (!mounted || epoch != _listenEpoch || _index != 0) return;
+          await _startVoiceOnce();
+          return;
+        }
+
+        await _handleVoiceCommand(raw);
       },
     );
+  }
+
+  bool _isPromptEcho(String normalized) {
+    if (normalized.isEmpty || _lastPromptNorm.isEmpty) return false;
+    if (normalized == _lastPromptNorm) return true;
+    if (normalized.length >= 24 && _lastPromptNorm.contains(normalized)) {
+      return true;
+    }
+    return false;
   }
 
   Future<void> _toggleMic() async {
     final voice = context.read<VoiceController>();
 
     if (voice.isListening) {
+      _listenEpoch++;
       await voice.stop();
     } else {
       await _startVoiceOnce();
     }
   }
 
+  Future<void> _resumeHomeVoice({bool speakPrompt = false}) async {
+    if (!mounted || _index != 0) return;
+
+    if (speakPrompt) {
+      await _say(
+        'Bạn muốn làm gì tiếp theo? Bạn có thể nói quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ hoặc chụp nhanh.',
+        title: 'TalkSight',
+      );
+    }
+
+    if (!mounted || _index != 0) return;
+    await _startVoiceOnce();
+  }
+
   Future<void> _goHome() async {
     if (!mounted) return;
     setState(() => _index = 0);
+    await _resumeHomeVoice();
   }
 
   Future<void> _goHistory() async {
     if (!mounted) return;
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
     setState(() => _index = 1);
   }
 
   Future<void> _goTasks() async {
     if (!mounted) return;
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
     setState(() => _index = 2);
   }
 
   Future<void> _goSettings() async {
     if (!mounted) return;
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
     setState(() => _index = 3);
   }
 
   Future<void> _openNewsScreen({String? initialQuery}) async {
     if (!mounted) return;
+
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
 
     await Navigator.push(
       context,
@@ -213,10 +269,19 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+
+    if (!mounted) return;
+    if (_index == 0) {
+      await _resumeHomeVoice(speakPrompt: true);
+    }
   }
 
   Future<void> _openOcrScreen() async {
     if (!mounted) return;
+
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
 
     await Navigator.push(
       context,
@@ -231,10 +296,19 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+
+    if (!mounted) return;
+    if (_index == 0) {
+      await _resumeHomeVoice(speakPrompt: true);
+    }
   }
 
   Future<void> _openCaptionScreen() async {
     if (!mounted) return;
+
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
 
     await Navigator.push(
       context,
@@ -249,18 +323,37 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+
+    if (!mounted) return;
+    if (_index == 0) {
+      await _resumeHomeVoice(speakPrompt: true);
+    }
+  }
+
+  Future<void> _openReadUrlScreen() async {
+    if (!mounted) return;
+
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ReadUrlScreen()),
+    );
+
+    if (!mounted) return;
+    if (_index == 0) {
+      await _resumeHomeVoice(speakPrompt: true);
+    }
   }
 
   Future<void> _handleVoiceCommand(String raw) async {
-    final voice = context.read<VoiceController>();
     final news = context.read<NewsAssistantController>();
+    final text = _norm(raw);
 
     final handledByNews = await news.handleUtterance(raw);
     if (handledByNews) return;
-
-    await voice.stop();
-
-    final text = _norm(raw);
 
     final isNewsCmd = text.contains('doc web') ||
         text.contains('doc bao') ||
@@ -281,10 +374,7 @@ class _HomeScreenState extends State<HomeScreen> {
         text.contains('doc duong dan')) {
       await _say('Mở đọc URL.', title: 'Đọc URL');
       if (!mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ReadUrlScreen()),
-      );
+      await _openReadUrlScreen();
       return;
     }
 
@@ -309,12 +399,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (text.contains('home') || text.contains('trang chu')) {
       setState(() => _index = 0);
       await _say('Về trang chủ.', title: 'Home');
+      if (!mounted) return;
+      await _resumeHomeVoice();
       return;
     }
 
     if (text.contains('quet') ||
         text.contains('ocr') ||
-        text.contains('o c r')) {
+        text.contains('o c r') ||
+        text.contains('doc chu')) {
       await _say('Mở quét chữ.', title: 'OCR');
       if (!mounted) return;
       await _openOcrScreen();
@@ -330,8 +423,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (text.contains('chup') || text.contains('camera')) {
-      await _say('Mở camera.', title: 'Camera');
+    if (text.contains('chup nhanh') ||
+        text.contains('chup') ||
+        text.contains('camera')) {
+      await _say('Mở chụp nhanh trực tiếp.', title: 'Chụp nhanh');
+      if (!mounted) return;
       await _onCameraPressed();
       return;
     }
@@ -340,6 +436,8 @@ class _HomeScreenState extends State<HomeScreen> {
       'Mình chưa hiểu lệnh. Bạn thử nói: đọc báo, quét chữ, mô tả ảnh, hoặc chụp nhanh.',
       title: 'TalkSight',
     );
+
+    if (!mounted) return;
     await _startVoiceOnce();
   }
 
@@ -366,147 +464,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _onCameraPressed() async {
-    final cameraPermission = await Permission.camera.request();
+    if (!mounted) return;
 
-    if (!cameraPermission.isGranted) {
-      const message = 'Bạn cần cấp quyền camera để chụp ảnh.';
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(message)),
-        );
-      }
-
-      await _say(message, title: 'Camera');
-      return;
-    }
-
-    final image = await _picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 88,
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LiveVisionScreen(),
+      ),
     );
 
-    if (image == null || !mounted) return;
-
-    _openAfterShotSheet(image.path);
-  }
-
-  void _openAfterShotSheet(String imagePath) {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (_) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const AppIcon(
-                  AppIcons.ocr,
-                  size: 24,
-                  color: AppColors.brandBrown,
-                ),
-                title: const Text('Quét chữ (OCR)'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _processImage(imagePath, VisionMode.ocr);
-                },
-              ),
-              ListTile(
-                leading: const AppIcon(
-                  AppIcons.image,
-                  size: 24,
-                  color: AppColors.brandBrown,
-                ),
-                title: const Text('Mô tả ảnh (Caption)'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _processImage(imagePath, VisionMode.caption);
-                },
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _processImage(String path, VisionMode mode) async {
-    setState(() => _loading = true);
-
-    final api = context.read<VisionApi>();
-
-    try {
-      if (mode == VisionMode.ocr) {
-        final res = await api.ocr(path);
-
-        if (!mounted) return;
-        setState(() => _loading = false);
-
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => VisionResultScreen(
-              title: 'Kết quả OCR',
-              content: res.text,
-            ),
-          ),
-        );
-
-        final preview =
-        res.text.length > 84 ? '${res.text.substring(0, 84)}...' : res.text;
-
-        context.read<PlayerController>().setNow(
-          'OCR',
-          preview,
-          newDetails: res.text,
-        );
-
-        Future.microtask(() => _say(res.text, title: 'OCR'));
-        return;
-      }
-
-      final res = await api.caption(path);
-
-      if (!mounted) return;
-      setState(() => _loading = false);
-
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => VisionResultScreen(
-            title: 'Kết quả mô tả ảnh',
-            content: res.caption,
-          ),
-        ),
-      );
-
-      final preview = res.caption.length > 84
-          ? '${res.caption.substring(0, 84)}...'
-          : res.caption;
-
-      context.read<PlayerController>().setNow(
-        'Mô tả ảnh',
-        preview,
-        newDetails: res.caption,
-      );
-
-      Future.microtask(() => _say(res.caption, title: 'Mô tả ảnh'));
-    } catch (e) {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
-
-      final message = ErrorUtils.message(e);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
-      }
-
-      await context.read<TtsService>().speak(message);
+    if (!mounted) return;
+    if (_index == 0) {
+      await _resumeHomeVoice(speakPrompt: true);
     }
   }
 
@@ -540,6 +513,21 @@ class _HomeScreenState extends State<HomeScreen> {
     await _toggleMic();
   }
 
+  Future<void> _onBottomBarTap(int value) async {
+    if (!mounted) return;
+
+    setState(() => _index = value);
+
+    if (value == 0) {
+      await _resumeHomeVoice();
+      return;
+    }
+
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final voice = context.watch<VoiceController>();
@@ -570,25 +558,6 @@ class _HomeScreenState extends State<HomeScreen> {
               children: pages,
             ),
           ),
-          if (_loading)
-            Container(
-              color: Colors.black45,
-              child: const Center(
-                child: Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(18),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(width: 12),
-                        Text('Đang xử lý...'),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
           Positioned.fill(
             bottom: _playerBottomOffset,
             child: Align(
@@ -635,7 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       bottomNavigationBar: TalkSightBottomBar(
         currentIndex: _index,
-        onTap: (value) => setState(() => _index = value),
+        onTap: _onBottomBarTap,
       ),
     );
   }
