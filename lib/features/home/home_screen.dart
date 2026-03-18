@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_icons.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/app_icon.dart';
+import '../../core/widgets/hold_to_listen_layer.dart';
 import '../caption/caption_screen.dart';
 import '../news/news_assistant_controller.dart';
 import '../news/news_assistant_screen.dart';
@@ -64,7 +65,8 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _say(
         'Xin chào bạn! Hôm nay bạn muốn sử dụng tính năng gì? '
-            'Bạn có thể nói: quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh.',
+            'Bạn có thể nói: quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh. '
+            'Hoặc giữ màn hình khoảng 2 giây để bật mic nghe lệnh.',
         title: 'TalkSight',
       );
       await _startVoiceOnce();
@@ -98,9 +100,8 @@ class _HomeScreenState extends State<HomeScreen> {
       player.setNow(
         _lastSpokenTitle,
         text,
-        newDetails: voice.lastWords.trim().isEmpty
-            ? 'Đang nghe...'
-            : voice.lastWords,
+        newDetails:
+        voice.lastWords.trim().isEmpty ? 'Đang nghe...' : voice.lastWords,
       );
       return;
     }
@@ -144,8 +145,32 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  int _settleMs(String text) {
+    final value = 900 + (text.length * 28);
+    if (value < 1200) return 1200;
+    if (value > 4200) return 4200;
+    return value;
+  }
+
+  Future<void> _announceAfterReturn(
+      String text, {
+        String title = 'TalkSight',
+        bool resumeVoiceIfHome = true,
+      }) async {
+    await _say(text, title: title);
+
+    if (!mounted) return;
+
+    await Future.delayed(Duration(milliseconds: _settleMs(text)));
+
+    if (!mounted) return;
+    if (resumeVoiceIfHome && _index == 0) {
+      await _startVoiceOnce();
+    }
+  }
+
   Future<void> _startVoiceOnce() async {
-    if (!mounted || _index != 0) return;
+    if (!mounted) return;
 
     final voice = context.read<VoiceController>();
     final epoch = ++_listenEpoch;
@@ -153,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await voice.stop();
     await Future.delayed(const Duration(milliseconds: 350));
 
-    if (!mounted || epoch != _listenEpoch || _index != 0) return;
+    if (!mounted || epoch != _listenEpoch) return;
 
     await voice.start(
       onFinal: (text) async {
@@ -167,13 +192,13 @@ class _HomeScreenState extends State<HomeScreen> {
             'Mình chưa nghe rõ. Bạn nói lại giúp mình nhé.',
             title: 'TalkSight',
           );
-          if (!mounted || epoch != _listenEpoch || _index != 0) return;
+          if (!mounted || epoch != _listenEpoch) return;
           await _startVoiceOnce();
           return;
         }
 
         if (_isPromptEcho(normalized)) {
-          if (!mounted || epoch != _listenEpoch || _index != 0) return;
+          if (!mounted || epoch != _listenEpoch) return;
           await _startVoiceOnce();
           return;
         }
@@ -203,12 +228,32 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _onHoldToListen() async {
+    if (!mounted) return;
+
+    final voice = context.read<VoiceController>();
+    final tts = context.read<TtsService>();
+    final player = context.read<PlayerController>();
+
+    if (voice.isListening) return;
+
+    await tts.stop();
+    player.setNow(
+      _lastSpokenTitle,
+      'Đang nghe...',
+      newDetails: 'Đang nghe...',
+    );
+
+    await _startVoiceOnce();
+  }
+
   Future<void> _resumeHomeVoice({bool speakPrompt = false}) async {
     if (!mounted || _index != 0) return;
 
     if (speakPrompt) {
       await _say(
-        'Bạn muốn làm gì tiếp theo? Bạn có thể nói quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ hoặc chụp nhanh.',
+        'Bạn muốn làm gì tiếp theo? Bạn có thể nói quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ hoặc chụp nhanh. '
+            'Hoặc giữ màn hình khoảng 2 giây để bật mic.',
         title: 'TalkSight',
       );
     }
@@ -348,6 +393,57 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _handleLiveVisionAction(String? action) async {
+    if (!mounted) return;
+
+    switch (action) {
+      case LiveVisionAction.news:
+        await _openNewsScreen();
+        return;
+
+      case LiveVisionAction.ocr:
+        await _openOcrScreen();
+        return;
+
+      case LiveVisionAction.history:
+        setState(() => _index = 1);
+        await _announceAfterReturn(
+          'Đã mở lịch sử.',
+          title: 'Lịch sử',
+          resumeVoiceIfHome: false,
+        );
+        return;
+
+      case LiveVisionAction.tasks:
+        setState(() => _index = 2);
+        await _announceAfterReturn(
+          'Đã mở tác vụ.',
+          title: 'Tác vụ',
+          resumeVoiceIfHome: false,
+        );
+        return;
+
+      case LiveVisionAction.settings:
+        setState(() => _index = 3);
+        await _announceAfterReturn(
+          'Đã mở cài đặt.',
+          title: 'Cài đặt',
+          resumeVoiceIfHome: false,
+        );
+        return;
+
+      case LiveVisionAction.home:
+      default:
+        setState(() => _index = 0);
+        await _announceAfterReturn(
+          'Đã về trang chủ. Bạn có thể nói đọc báo, quét chữ, mô tả ảnh, lịch sử, cài đặt, tác vụ hoặc chụp nhanh.',
+          title: 'TalkSight',
+          resumeVoiceIfHome: true,
+        );
+        return;
+    }
+  }
+
   Future<void> _handleVoiceCommand(String raw) async {
     final news = context.read<NewsAssistantController>();
     final text = _norm(raw);
@@ -470,7 +566,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await context.read<VoiceController>().stop();
     await context.read<TtsService>().stop();
 
-    await Navigator.push(
+    final action = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (_) => const LiveVisionScreen(),
@@ -478,9 +574,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!mounted) return;
-    if (_index == 0) {
-      await _resumeHomeVoice(speakPrompt: true);
-    }
+    await _handleLiveVisionAction(action);
   }
 
   Future<void> _onPlayPause() async {
@@ -544,67 +638,71 @@ class _HomeScreenState extends State<HomeScreen> {
       const SettingsTab(),
     ];
 
-    return Scaffold(
-      extendBody: true,
-      appBar: TalkSightAppBar(
-        isListening: voice.isListening,
-        onMicPressed: _toggleMic,
-      ),
-      body: Stack(
-        children: [
-          SafeArea(
-            child: IndexedStack(
-              index: _index,
-              children: pages,
-            ),
-          ),
-          Positioned.fill(
-            bottom: _playerBottomOffset,
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: PlayerSlidingPanel(
-                onPlayPause: _onPlayPause,
-                onStop: _onStopTts,
-                onMic: _onMicFromPanel,
+    return HoldToListenLayer(
+      holdDuration: const Duration(seconds: 2),
+      onTriggered: _onHoldToListen,
+      child: Scaffold(
+        extendBody: true,
+        appBar: TalkSightAppBar(
+          isListening: voice.isListening,
+          onMicPressed: _toggleMic,
+        ),
+        body: Stack(
+          children: [
+            SafeArea(
+              child: IndexedStack(
+                index: _index,
+                children: pages,
               ),
             ),
-          ),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: Transform.translate(
-        offset: const Offset(0, -8),
-        child: SizedBox(
-          width: _fabSize,
-          height: _fabSize,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 5),
-              boxShadow: const [
-                BoxShadow(
-                  blurRadius: 16,
-                  offset: Offset(0, 6),
-                  color: Colors.black26,
+            Positioned.fill(
+              bottom: _playerBottomOffset,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: PlayerSlidingPanel(
+                  onPlayPause: _onPlayPause,
+                  onStop: _onStopTts,
+                  onMic: _onMicFromPanel,
                 ),
-              ],
+              ),
             ),
-            child: FloatingActionButton(
-              elevation: 0,
-              backgroundColor: AppColors.brandBrown,
-              onPressed: _onCameraPressed,
-              child: const AppIcon(
-                AppIcons.camera,
-                color: Colors.white,
-                size: 28,
+          ],
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+        floatingActionButton: Transform.translate(
+          offset: const Offset(0, -8),
+          child: SizedBox(
+            width: _fabSize,
+            height: _fabSize,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 5),
+                boxShadow: const [
+                  BoxShadow(
+                    blurRadius: 16,
+                    offset: Offset(0, 6),
+                    color: Colors.black26,
+                  ),
+                ],
+              ),
+              child: FloatingActionButton(
+                elevation: 0,
+                backgroundColor: AppColors.brandBrown,
+                onPressed: _onCameraPressed,
+                child: const AppIcon(
+                  AppIcons.camera,
+                  color: Colors.white,
+                  size: 28,
+                ),
               ),
             ),
           ),
         ),
-      ),
-      bottomNavigationBar: TalkSightBottomBar(
-        currentIndex: _index,
-        onTap: _onBottomBarTap,
+        bottomNavigationBar: TalkSightBottomBar(
+          currentIndex: _index,
+          onTap: _onBottomBarTap,
+        ),
       ),
     );
   }
