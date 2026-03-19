@@ -1,13 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/widgets/hold_to_listen_layer.dart';
 import '../auth/auth_controller.dart';
 import '../history/history_controller.dart';
 import '../player/player_controller.dart';
@@ -25,12 +26,12 @@ enum _CaptionStage {
 }
 
 class CaptionScreen extends StatefulWidget {
-  final Future<void> Function()? onGoHome;
-  final Future<void> Function()? onGoHistory;
-  final Future<void> Function()? onGoTasks;
-  final Future<void> Function()? onGoSettings;
-  final Future<void> Function()? onOpenNews;
-  final Future<void> Function()? onOpenOcr;
+  final Future Function()? onGoHome;
+  final Future Function()? onGoHistory;
+  final Future Function()? onGoTasks;
+  final Future Function()? onGoSettings;
+  final Future Function()? onOpenNews;
+  final Future Function()? onOpenOcr;
 
   const CaptionScreen({
     super.key,
@@ -54,8 +55,8 @@ class _CaptionScreenState extends State<CaptionScreen> {
 
   _CaptionStage _stage = _CaptionStage.idle;
   int _listenEpoch = 0;
-  String _lastPromptNorm = '';
 
+  String _lastPromptNorm = '';
   String _lastSpokenText = '';
   String _lastSpokenTitle = 'Mô tả ảnh';
   String _latestImagePath = '';
@@ -68,7 +69,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
   @override
   void initState() {
     super.initState();
-
     _tts = context.read<TtsService>();
     _voice = context.read<VoiceController>();
     _player = context.read<PlayerController>();
@@ -96,7 +96,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
   Future<void> _askSource() async {
     _stage = _CaptionStage.waitingSource;
     if (mounted) setState(() {});
-
     await _promptAndListen(
       'Bạn muốn chụp ảnh để mô tả hay chọn ảnh từ thư viện?',
       _handleSourceUtterance,
@@ -107,7 +106,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
   Future<void> _askGalleryChoice() async {
     _stage = _CaptionStage.waitingGalleryChoice;
     if (mounted) setState(() {});
-
     await _promptAndListen(
       'Bạn muốn mô tả ảnh mới nhất hay ảnh thứ 2?',
       _handleGalleryChoiceUtterance,
@@ -118,7 +116,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
   Future<void> _askNextAction() async {
     _stage = _CaptionStage.waitingNextAction;
     if (mounted) setState(() {});
-
     await _promptAndListen(
       'Bạn muốn sử dụng thêm tính năng gì khác? Bạn có thể nói: mô tả lại, quét chữ, đọc báo, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
       _handleNextActionUtterance,
@@ -138,7 +135,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
 
     _lastPromptNorm = _norm(prompt);
     await _speakWithPlayer(prompt, title: 'Mô tả ảnh');
-
     await Future.delayed(Duration(milliseconds: settleMs));
 
     if (!mounted || epoch != _listenEpoch) return;
@@ -255,7 +251,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       return;
     }
 
-    if (n.contains('quet chu') || n.contains('ocr')) {
+    if (n.contains('quet chu') || n.contains('ocr') || n.contains('doc chu')) {
       await _popToRoot();
       if (widget.onOpenOcr != null) {
         await widget.onOpenOcr!();
@@ -263,9 +259,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       return;
     }
 
-    if (n.contains('doc bao') ||
-        n.contains('tin tuc') ||
-        n.contains('tin moi')) {
+    if (n.contains('doc bao') || n.contains('tin tuc') || n.contains('tin moi')) {
       await _popToRoot();
       if (widget.onOpenNews != null) {
         await widget.onOpenNews!();
@@ -347,28 +341,14 @@ class _CaptionScreenState extends State<CaptionScreen> {
   }
 
   Future<bool> _ensureGalleryPermission() async {
-    final photosPermission = await Permission.photos.request();
-    final storagePermission = await Permission.storage.request();
-
-    if (!photosPermission.isGranted &&
-        !photosPermission.isLimited &&
-        !storagePermission.isGranted) {
+    final permission = await PhotoManager.requestPermissionExtend();
+    if (!permission.isAuth && !permission.hasAccess) {
       await _speakWithPlayer(
         'Bạn chưa cấp quyền thư viện ảnh. Hãy bật quyền ảnh trong cài đặt ứng dụng.',
         title: 'Mô tả ảnh',
       );
       return false;
     }
-
-    final permission = await PhotoManager.requestPermissionExtend();
-    if (!permission.isAuth && !permission.hasAccess) {
-      await _speakWithPlayer(
-        'Mình chưa được quyền truy cập thư viện ảnh.',
-        title: 'Mô tả ảnh',
-      );
-      return false;
-    }
-
     return true;
   }
 
@@ -441,7 +421,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
   }
 
   int _createdAt(AssetEntity a) => a.createDateSecond ?? 0;
-
   int _modifiedAt(AssetEntity a) => a.modifiedDateSecond ?? 0;
 
   bool _isNewerAsset(AssetEntity a, AssetEntity b) {
@@ -487,16 +466,12 @@ class _CaptionScreenState extends State<CaptionScreen> {
           page: 0,
           size: 50,
         );
-
         final priority = _albumPriority(album.name);
 
         for (final asset in assets) {
-          final current = _RankedAsset(
-            asset: asset,
-            priority: priority,
-          );
-
+          final current = _RankedAsset(asset: asset, priority: priority);
           final existed = rankedById[asset.id];
+
           if (existed == null) {
             rankedById[asset.id] = current;
             continue;
@@ -616,9 +591,10 @@ class _CaptionScreenState extends State<CaptionScreen> {
     _lastSpokenTitle = title;
     _lastSpokenText = value;
 
-    final preview = value.length > 88 ? '${value.substring(0, 88)}...' : value;
-    _player.setNow(title, preview, newDetails: value);
+    final preview =
+    value.length > 88 ? '${value.substring(0, 88)}...' : value;
 
+    _player.setNow(title, preview, newDetails: value);
     await _tts.stop();
     await _tts.speak(value);
   }
@@ -645,6 +621,11 @@ class _CaptionScreenState extends State<CaptionScreen> {
     }
 
     await _askSource();
+  }
+
+  Future<void> _onHoldToListen() async {
+    if (_voice.isListening) return;
+    await _toggleMic();
   }
 
   Future<void> _onPlayPause() async {
@@ -692,11 +673,11 @@ class _CaptionScreenState extends State<CaptionScreen> {
   String _hintText() {
     switch (_stage) {
       case _CaptionStage.waitingSource:
-        return 'Gợi ý: nói “chụp ảnh” hoặc “chọn ảnh từ thư viện”.';
+        return 'Gợi ý: nói “chụp ảnh” hoặc “chọn ảnh từ thư viện”. Hoặc giữ màn hình 2 giây để bật mic.';
       case _CaptionStage.waitingGalleryChoice:
-        return 'Gợi ý: nói “ảnh mới nhất” hoặc “ảnh thứ 2”.';
+        return 'Gợi ý: nói “ảnh mới nhất” hoặc “ảnh thứ 2”. Hoặc giữ màn hình 2 giây để bật mic.';
       case _CaptionStage.waitingNextAction:
-        return 'Gợi ý: nói “mô tả lại”, “quét chữ”, “đọc báo”, “lịch sử”, “tác vụ”, “cài đặt”, “trang chủ” hoặc “thoát”.';
+        return 'Gợi ý: nói “mô tả lại”, “quét chữ”, “đọc báo”, “lịch sử”, “tác vụ”, “cài đặt”, “trang chủ” hoặc “thoát”. Hoặc giữ màn hình 2 giây để bật mic.';
       case _CaptionStage.processing:
         return 'Đang xử lý mô tả ảnh...';
       case _CaptionStage.idle:
@@ -709,166 +690,172 @@ class _CaptionScreenState extends State<CaptionScreen> {
     final c = context.watch<CaptionController>();
     final voice = context.watch<VoiceController>();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mô tả ảnh'),
-        actions: [
-          IconButton(
-            onPressed: _toggleMic,
-            icon: Icon(
-              voice.isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-            ),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 220),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: AppColors.cardStroke.withValues(alpha: 0.75),
-                  ),
-                ),
-                child: Text(
-                  voice.isListening
-                      ? (voice.lastWords.trim().isEmpty
-                      ? 'Đang nghe lệnh...'
-                      : 'Đang nghe: ${voice.lastWords}')
-                      : _hintText(),
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    height: 1.45,
-                  ),
-                ),
+    return HoldToListenLayer(
+      holdDuration: const Duration(seconds: 2),
+      onTriggered: _onHoldToListen,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Mô tả ảnh'),
+          actions: [
+            IconButton(
+              onPressed: _toggleMic,
+              icon: Icon(
+                voice.isListening
+                    ? Icons.mic_rounded
+                    : Icons.mic_none_rounded,
               ),
-              const SizedBox(height: 16),
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: AppColors.cardStroke.withValues(alpha: 0.8),
+            ),
+          ],
+        ),
+        body: Stack(
+          children: [
+            ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 220),
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: AppColors.cardStroke.withValues(alpha: 0.75),
+                    ),
+                  ),
+                  child: Text(
+                    voice.isListening
+                        ? (voice.lastWords.trim().isEmpty
+                        ? 'Đang nghe lệnh...'
+                        : 'Đang nghe: ${voice.lastWords}')
+                        : _hintText(),
+                    style: const TextStyle(
+                      color: Colors.black54,
+                      height: 1.45,
+                    ),
                   ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Kết quả mô tả',
-                              style: TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.w900,
+                const SizedBox(height: 16),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: AppColors.cardStroke.withValues(alpha: 0.8),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Kết quả mô tả',
+                                style: TextStyle(
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
                             ),
-                          ),
-                          IconButton(
-                            onPressed: c.caption.trim().isEmpty
-                                ? null
-                                : () => _speakWithPlayer(
-                              c.caption,
-                              title: 'Kết quả mô tả',
+                            IconButton(
+                              onPressed: c.caption.trim().isEmpty
+                                  ? null
+                                  : () => _speakWithPlayer(
+                                c.caption,
+                                title: 'Kết quả mô tả',
+                              ),
+                              icon: const Icon(Icons.volume_up_rounded),
                             ),
-                            icon: const Icon(Icons.volume_up_rounded),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        SelectableText(
+                          c.caption.trim().isEmpty ? '(Trống)' : c.caption,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            height: 1.6,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        if (_latestImagePath.trim().isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.file(
+                              File(_latestImagePath),
+                              height: 180,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-                      SelectableText(
-                        c.caption.trim().isEmpty ? '(Trống)' : c.caption,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          height: 1.6,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      if (_latestImagePath.trim().isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: Image.file(
-                            File(_latestImagePath),
-                            height: 180,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-          if (c.loading)
-            Container(
-              color: Colors.black.withValues(alpha: 0.14),
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
+              ],
             ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: _actionsBottomOffset,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.card,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    blurRadius: 16,
-                    offset: Offset(0, 6),
-                    color: Colors.black12,
-                  ),
-                ],
+            if (c.loading)
+              Container(
+                color: Colors.black.withValues(alpha: 0.14),
+                child: const Center(
+                  child: CircularProgressIndicator(),
+                ),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _ActionButton(
-                      icon: Icons.camera_alt_rounded,
-                      text: 'Chụp ảnh để mô tả',
-                      filled: true,
-                      onTap: c.loading ? null : _openCameraCaptureFlow,
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: _actionsBottomOffset,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: const [
+                    BoxShadow(
+                      blurRadius: 16,
+                      offset: Offset(0, 6),
+                      color: Colors.black12,
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _ActionButton(
-                      icon: Icons.photo_library_rounded,
-                      text: 'Chọn ảnh từ thư viện',
-                      filled: false,
-                      onTap: c.loading ? null : _pickFromGalleryManual,
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _ActionButton(
+                        icon: Icons.camera_alt_rounded,
+                        text: 'Chụp ảnh để mô tả',
+                        filled: true,
+                        onTap: c.loading ? null : _openCameraCaptureFlow,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _ActionButton(
+                        icon: Icons.photo_library_rounded,
+                        text: 'Chọn ảnh từ thư viện',
+                        filled: false,
+                        onTap: c.loading ? null : _pickFromGalleryManual,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          Positioned.fill(
-            bottom: _playerBottomOffset,
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: PlayerSlidingPanel(
-                onPlayPause: _onPlayPause,
-                onStop: _onStopTts,
-                onMic: _toggleMic,
+            Positioned.fill(
+              bottom: _playerBottomOffset,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: PlayerSlidingPanel(
+                  onPlayPause: _onPlayPause,
+                  onStop: _onStopTts,
+                  onMic: _toggleMic,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
