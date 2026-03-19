@@ -6,6 +6,9 @@ import '../../core/theme/app_icons.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/app_icon.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
+import '../auth/auth_controller.dart';
+import '../auth/login_screen.dart';
+import '../auth/register_screen.dart';
 import '../caption/caption_screen.dart';
 import '../news/news_assistant_controller.dart';
 import '../news/news_assistant_screen.dart';
@@ -65,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _say(
         'Xin chào bạn! Hôm nay bạn muốn sử dụng tính năng gì? '
-            'Bạn có thể nói: quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh. '
+            'Bạn có thể nói: quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh, đăng nhập hoặc đăng ký. '
             'Hoặc giữ màn hình khoảng 2 giây để bật mic nghe lệnh.',
         title: 'TalkSight',
       );
@@ -252,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (speakPrompt) {
       await _say(
-        'Bạn muốn làm gì tiếp theo? Bạn có thể nói quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ hoặc chụp nhanh. '
+        'Bạn muốn làm gì tiếp theo? Bạn có thể nói quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh, đăng nhập hoặc đăng ký. '
             'Hoặc giữ màn hình khoảng 2 giây để bật mic.',
         title: 'TalkSight',
       );
@@ -290,6 +293,42 @@ class _HomeScreenState extends State<HomeScreen> {
     await context.read<VoiceController>().stop();
     await context.read<TtsService>().stop();
     setState(() => _index = 3);
+  }
+
+  Future<void> _openLoginScreen({bool resumeHomeVoiceIfReturn = true}) async {
+    if (!mounted) return;
+
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+
+    if (!mounted) return;
+    if (_index == 0 && resumeHomeVoiceIfReturn) {
+      await _resumeHomeVoice(speakPrompt: true);
+    }
+  }
+
+  Future<void> _openRegisterScreen({bool resumeHomeVoiceIfReturn = true}) async {
+    if (!mounted) return;
+
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
+
+    if (!mounted) return;
+    if (_index == 0 && resumeHomeVoiceIfReturn) {
+      await _resumeHomeVoice(speakPrompt: true);
+    }
   }
 
   Future<void> _openNewsScreen({String? initialQuery}) async {
@@ -407,11 +446,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
       case LiveVisionAction.history:
         setState(() => _index = 1);
-        await _announceAfterReturn(
-          'Đã mở lịch sử.',
-          title: 'Lịch sử',
-          resumeVoiceIfHome: false,
-        );
+        if (context.read<AuthController>().loggedIn) {
+          await _announceAfterReturn(
+            'Đã mở lịch sử.',
+            title: 'Lịch sử',
+            resumeVoiceIfHome: false,
+          );
+        } else {
+          await _announceAfterReturn(
+            'Bạn cần đăng nhập để xem lịch sử. Mình đã chuyển bạn tới lịch sử để chọn đăng nhập hoặc đăng ký.',
+            title: 'Lịch sử',
+            resumeVoiceIfHome: false,
+          );
+        }
         return;
 
       case LiveVisionAction.tasks:
@@ -436,7 +483,7 @@ class _HomeScreenState extends State<HomeScreen> {
       default:
         setState(() => _index = 0);
         await _announceAfterReturn(
-          'Đã về trang chủ. Bạn có thể nói đọc báo, quét chữ, mô tả ảnh, lịch sử, cài đặt, tác vụ hoặc chụp nhanh.',
+          'Đã về trang chủ. Bạn có thể nói đọc báo, quét chữ, mô tả ảnh, lịch sử, cài đặt, tác vụ, chụp nhanh, đăng nhập hoặc đăng ký.',
           title: 'TalkSight',
           resumeVoiceIfHome: true,
         );
@@ -444,12 +491,88 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  bool _isLoginCommand(String text) {
+    return text.contains('dang nhap') ||
+        text.contains('login') ||
+        text.contains('log in') ||
+        text.contains('vao tai khoan');
+  }
+
+  bool _isRegisterCommand(String text) {
+    return text.contains('dang ky') ||
+        text.contains('tao tai khoan') ||
+        text.contains('lap tai khoan') ||
+        text.contains('register') ||
+        text.contains('sign up');
+  }
+
+  bool _isLogoutCommand(String text) {
+    return text.contains('dang xuat') ||
+        text.contains('log out') ||
+        text.contains('logout') ||
+        text.contains('thoat tai khoan');
+  }
+
   Future<void> _handleVoiceCommand(String raw) async {
     final news = context.read<NewsAssistantController>();
+    final auth = context.read<AuthController>();
     final text = _norm(raw);
 
     final handledByNews = await news.handleUtterance(raw);
     if (handledByNews) return;
+
+    if (_isLogoutCommand(text)) {
+      if (!auth.loggedIn) {
+        await _say('Bạn đang ở chế độ khách nên chưa có tài khoản nào đang đăng nhập.', title: 'Tài khoản');
+        if (!mounted) return;
+        await _startVoiceOnce();
+        return;
+      }
+
+      await auth.logout();
+      if (!mounted) return;
+      await _say(
+        'Bạn đã đăng xuất. Hiện tại bạn đang ở chế độ khách.',
+        title: 'Tài khoản',
+      );
+      if (!mounted) return;
+      await _resumeHomeVoice(speakPrompt: true);
+      return;
+    }
+
+    if (_isRegisterCommand(text)) {
+      if (auth.loggedIn) {
+        await _say(
+          'Bạn đang đăng nhập bằng ${auth.email ?? "tài khoản hiện tại"}. Nếu muốn tạo tài khoản khác, bạn có thể đăng xuất trước.',
+          title: 'Đăng ký',
+        );
+        if (!mounted) return;
+        await _resumeHomeVoice(speakPrompt: true);
+        return;
+      }
+
+      await _say('Ok, mình mở màn hình đăng ký tài khoản.', title: 'Đăng ký');
+      if (!mounted) return;
+      await _openRegisterScreen();
+      return;
+    }
+
+    if (_isLoginCommand(text)) {
+      if (auth.loggedIn) {
+        await _say(
+          'Bạn đã đăng nhập rồi. Tài khoản hiện tại là ${auth.email ?? "TalkSight"}.',
+          title: 'Đăng nhập',
+        );
+        if (!mounted) return;
+        await _resumeHomeVoice(speakPrompt: true);
+        return;
+      }
+
+      await _say('Ok, mình mở màn hình đăng nhập tài khoản.', title: 'Đăng nhập');
+      if (!mounted) return;
+      await _openLoginScreen();
+      return;
+    }
 
     final isNewsCmd = text.contains('doc web') ||
         text.contains('doc bao') ||
@@ -474,8 +597,20 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (text.contains('lich su')) {
+    if (text.contains('xem lich su') ||
+        text.contains('mo lich su') ||
+        text.contains('vao lich su') ||
+        text.contains('lich su')) {
       setState(() => _index = 1);
+
+      if (!auth.loggedIn) {
+        await _say(
+          'Bạn cần đăng nhập để xem lịch sử đã lưu. Mình chuyển bạn tới lịch sử để bạn chọn đăng nhập hoặc đăng ký.',
+          title: 'Lịch sử',
+        );
+        return;
+      }
+
       await _say('Mở lịch sử.', title: 'Lịch sử');
       return;
     }
@@ -529,7 +664,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     await _say(
-      'Mình chưa hiểu lệnh. Bạn thử nói: đọc báo, quét chữ, mô tả ảnh, hoặc chụp nhanh.',
+      'Mình chưa hiểu lệnh. Bạn thử nói: đăng nhập, đăng ký, đọc báo, quét chữ, mô tả ảnh, xem lịch sử hoặc chụp nhanh.',
       title: 'TalkSight',
     );
 

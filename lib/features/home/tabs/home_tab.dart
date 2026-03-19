@@ -64,20 +64,18 @@ class HomeTab extends StatelessWidget {
     );
   }
 
-  Future<void> _handleAuthTap(
-      BuildContext context,
-      AuthController auth,
-      ) async {
-    if (!auth.loggedIn) {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
-      return;
-    }
-
+  Future<void> _handleLogout(BuildContext context, AuthController auth) async {
     await auth.logout();
   }
+
+  Future<void> _openLogin(BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -86,12 +84,11 @@ class HomeTab extends StatelessWidget {
     final micTitle = isListening ? 'Đang nghe...' : 'Nhấn mic để nói';
     final micSub = isListening
         ? (lastWords.trim().isEmpty ? '...' : lastWords)
-        : 'Bạn có thể nói: đọc báo, quét chữ, mô tả ảnh, chụp nhanh';
+        : 'Bạn có thể nói: đăng nhập, đăng ký, đọc báo, quét chữ, mô tả ảnh, xem lịch sử';
 
     final primaryText = auth.loggedIn ? (auth.email ?? 'Người dùng') : 'Khách';
-    final secondaryText = auth.loggedIn
-        ? 'Lịch sử: Đang lưu trữ'
-        : 'Lịch sử: Không lưu trữ';
+    final secondaryText =
+    auth.loggedIn ? 'Lịch sử: Đang lưu trữ' : 'Lịch sử: Không lưu trữ';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
@@ -156,6 +153,7 @@ class HomeTab extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Container(
                   width: 48,
@@ -196,28 +194,42 @@ class HomeTab extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                SizedBox(
-                  height: 40,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _handleAuthTap(context, auth),
-                    icon: Icon(
-                      auth.loggedIn
-                          ? Icons.logout_rounded
-                          : Icons.lock_rounded,
-                      size: 18,
+                if (auth.loggedIn)
+                  SizedBox(
+                    height: 40,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _handleLogout(context, auth),
+                      icon: const Icon(Icons.logout_rounded, size: 18),
+                      label: const Text('Đăng xuất'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.brandBrown,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
                     ),
-                    label: Text(auth.loggedIn ? 'Đăng xuất' : 'Đăng nhập'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.brandBrown,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(999),
+                  )
+                else
+                  SizedBox(
+                    height: 40,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _openLogin(context),
+                      icon: const Icon(Icons.lock_rounded, size: 18),
+                      label: const Text('Đăng nhập'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.brandBrown,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999),
+                        ),
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
