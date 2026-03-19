@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/tts/tts_service.dart';
+import '../../../core/widgets/hold_to_listen_layer.dart';
+import '../../../data/models/history_models.dart';
 import '../../auth/auth_controller.dart';
 import '../../auth/login_screen.dart';
+import '../../auth/register_screen.dart';
 import '../../history/history_controller.dart';
 import '../../history/history_detail_screen.dart';
+import '../../voice/voice_controller.dart';
 
 class HistoryTab extends StatefulWidget {
   const HistoryTab({super.key});
@@ -15,17 +20,241 @@ class HistoryTab extends StatefulWidget {
 }
 
 class _HistoryTabState extends State<HistoryTab> {
-  String? _type;
+  String? _type; // null, ocr, caption, read_url
   bool _requestedInitialLoad = false;
 
-  @override
-  Widget build(BuildContext context) {
-    final loggedIn = context.select<AuthController, bool>((a) => a.loggedIn);
-    final c = context.watch<HistoryController>();
+  int _listenEpoch = 0;
+  String _lastPromptNorm = '';
+  String _lastAnnounceMode = '';
 
+  @override
+  void dispose() {
+    _listenEpoch++;
+    context.read<VoiceController>().stop();
+    super.dispose();
+  }
+
+  Future<void> _speak(String text) async {
+    _lastPromptNorm = _norm(text);
+    final tts = context.read<TtsService>();
+    final voice = context.read<VoiceController>();
+    await voice.stop();
+    await tts.stop();
+    await tts.speak(text);
+  }
+
+  Future<void> _announceGuest() async {
+    await _speak(
+      'Đây là màn hình lịch sử. '
+          'Bạn đang ở chế độ khách nên chưa thể xem lịch sử đã lưu. '
+          'Bạn có thể nói đăng nhập hoặc đăng ký.',
+    );
+  }
+
+  Future<void> _announceLoggedIn() async {
+    await _speak(
+      'Màn hình lịch sử. '
+          'Bạn có thể nói tất cả, quét chữ, mô tả ảnh, đọc báo, tải lại, '
+          'mở mục 1, đọc mục 1 hoặc xóa mục 1.',
+    );
+  }
+
+  Future<void> _startVoice() async {
+    final voice = context.read<VoiceController>();
+    final tts = context.read<TtsService>();
+    final epoch = ++_listenEpoch;
+
+    await tts.stop();
+    await voice.stop();
+    await Future.delayed(const Duration(milliseconds: 250));
+
+    if (!mounted || epoch != _listenEpoch) return;
+
+    await voice.start(
+      onFinal: (text) async {
+        if (!mounted || epoch != _listenEpoch) return;
+        final normalized = _norm(text);
+        if (normalized.isEmpty || _isPromptEcho(normalized)) return;
+        await _handleVoice(text);
+      },
+    );
+  }
+
+  bool _isPromptEcho(String normalized) {
+    if (_lastPromptNorm.isEmpty || normalized.isEmpty) return false;
+    if (normalized == _lastPromptNorm) return true;
+    if (normalized.length >= 24 && _lastPromptNorm.contains(normalized)) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _handleVoice(String raw) async {
+    final n = _norm(raw);
+    final loggedIn = context.read<AuthController>().loggedIn;
+    final controller = context.read<HistoryController>();
+
+    if (!loggedIn) {
+      if (n.contains('dang nhap')) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+        return;
+      }
+      if (n.contains('dang ky') || n.contains('tao tai khoan')) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const RegisterScreen()),
+        );
+        return;
+      }
+      await _announceGuest();
+      return;
+    }
+
+    if (n.contains('nhac lai') || n.contains('doc lai huong dan') || n.contains('huong dan')) {
+      await _announceLoggedIn();
+      return;
+    }
+
+    if (n.contains('tai lai') || n.contains('lam moi') || n.contains('refresh')) {
+      await controller.load(type: _type);
+      await _speak('Đã tải lại lịch sử.');
+      return;
+    }
+
+    if (n == 'tat ca' || n.contains('loc tat ca')) {
+      await _changeFilter(null);
+      return;
+    }
+
+    if (n.contains('quet chu') || n == 'ocr') {
+      await _changeFilter('ocr');
+      return;
+    }
+
+    if (n.contains('mo ta anh') || n.contains('caption')) {
+      await _changeFilter('caption');
+      return;
+    }
+
+    if (n.contains('doc bao') || n.contains('bao') || n.contains('read url')) {
+      await _changeFilter('read_url');
+      return;
+    }
+
+    final index = _extractIndex(n);
+    if (index != null) {
+      final items = controller.items;
+      if (index < 1 || index > items.length) {
+        await _speak('Không thấy mục số $index trong danh sách hiện tại.');
+        return;
+      }
+
+      final item = items[index - 1] as HistoryItem;
+
+      if (n.contains('xoa muc') || n.contains('xoa so') || n.startsWith('xoa ')) {
+        await controller.remove(item.id);
+        return;
+      }
+
+      if (n.contains('doc muc') || n.contains('nghe muc')) {
+        await controller.speakItem(item.resultText);
+        return;
+      }
+
+      if (n.contains('mo muc') || n.contains('xem muc') || n.startsWith('mo ')) {
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HistoryDetailScreen(item: item),
+          ),
+        );
+        return;
+      }
+    }
+
+    await _announceLoggedIn();
+  }
+
+  int? _extractIndex(String normalized) {
+    final digit = RegExp(r'\b(\d+)\b').firstMatch(normalized);
+    if (digit != null) {
+      return int.tryParse(digit.group(1)!);
+    }
+
+    const map = <String, int>{
+      'mot': 1,
+      'muc mot': 1,
+      'so mot': 1,
+      'hai': 2,
+      'muc hai': 2,
+      'so hai': 2,
+      'ba': 3,
+      'muc ba': 3,
+      'bon': 4,
+      'tu': 4,
+      'nam': 5,
+      'sau': 6,
+      'bay': 7,
+      'tam': 8,
+      'chin': 9,
+      'muoi': 10,
+    };
+
+    for (final entry in map.entries) {
+      if (normalized.contains(entry.key)) return entry.value;
+    }
+    return null;
+  }
+
+  String _norm(String input) {
+    var s = input.toLowerCase().trim();
+    const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
+        'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ'
+        'ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨ'
+        'ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ';
+    const to = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
+        'ooooooooooooooooouuuuuuuuuuuyyyyyd'
+        'AAAAAAAAAAAAAAAAAEEEEEEEEEEEIIIII'
+        'OOOOOOOOOOOOOOOOOUUUUUUUUUUUYYYYYD';
+
+    for (int i = 0; i < from.length; i++) {
+      s = s.replaceAll(from[i], to[i]);
+    }
+
+    s = s.replaceAll(RegExp(r'[^a-z0-9\s]'), ' ');
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return s;
+  }
+
+  Future<void> _changeFilter(String? typeValue) async {
+    setState(() => _type = typeValue);
+    await context.read<HistoryController>().load(type: _type);
+    await _speak('Đã lọc ${_labelOf(typeValue).toLowerCase()}.');
+  }
+
+  Future<void> _openLogin() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    );
+  }
+
+  Future<void> _openRegister() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
+  }
+
+  void _maybeLoadInitial(bool loggedIn) {
     if (loggedIn && !_requestedInitialLoad) {
       _requestedInitialLoad = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
         context.read<HistoryController>().load(type: _type);
       });
     }
@@ -33,203 +262,471 @@ class _HistoryTabState extends State<HistoryTab> {
     if (!loggedIn && _requestedInitialLoad) {
       _requestedInitialLoad = false;
     }
+  }
 
-    if (!loggedIn) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Card(
+  void _maybeAnnounce(bool loggedIn) {
+    final mode = loggedIn ? 'logged_in' : 'guest';
+    if (_lastAnnounceMode == mode) return;
+    _lastAnnounceMode = mode;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      if (loggedIn) {
+        await _announceLoggedIn();
+      } else {
+        await _announceGuest();
+      }
+    });
+  }
+
+  Widget _voiceCard() {
+    final voice = context.watch<VoiceController>();
+    final subtitle = voice.isListening
+        ? (voice.lastWords.trim().isEmpty ? 'Đang nghe...' : voice.lastWords.trim())
+        : 'Nhấn mic hoặc giữ màn hình 2 giây để điều khiển lịch sử';
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: AppColors.bgBeige,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                voice.isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                color: AppColors.brandBrown,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    voice.isListening ? 'Đang nghe lệnh lịch sử' : 'Điều khiển bằng giọng nói',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: voice.isListening ? 'Dừng nghe' : 'Bắt đầu nghe',
+              onPressed: () async {
+                if (voice.isListening) {
+                  _listenEpoch++;
+                  await voice.stop();
+                } else {
+                  await _startVoice();
+                }
+              },
+              icon: Icon(
+                voice.isListening ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+                color: AppColors.brandBrown,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(String label, String? typeValue) {
+    final selected = _type == typeValue;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      selectedColor: AppColors.cardStroke.withOpacity(0.55),
+      labelStyle: TextStyle(
+        fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+        color: AppColors.textDark,
+      ),
+      onSelected: (_) async {
+        setState(() => _type = typeValue);
+        await context.read<HistoryController>().load(type: _type);
+      },
+    );
+  }
+
+  String _labelOf(String? type) {
+    switch (type) {
+      case 'ocr':
+        return 'Quét chữ';
+      case 'caption':
+        return 'Mô tả ảnh';
+      case 'read_url':
+        return 'Đọc báo';
+      default:
+        return 'Tất cả';
+    }
+  }
+
+  Widget _guestView() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+      children: [
+        Card(
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Đăng nhập để lưu lịch sử\n(Guest mode)",
+              children: const [
+                Text(
+                  'Đăng nhập để lưu lịch sử\n(Guest mode)',
                   style: TextStyle(
-                    fontSize: 26,
+                    fontSize: 28,
                     fontWeight: FontWeight.w900,
+                    height: 1.2,
+                    color: AppColors.textDark,
                   ),
                 ),
-                const SizedBox(height: 10),
-                const Text(
-                  "Bạn cần đăng nhập để xem và lưu lịch sử hoạt động.",
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const LoginScreen(),
-                      ),
-                    ),
-                    child: const Text("Đăng nhập"),
+                SizedBox(height: 10),
+                Text(
+                  'Bạn cần đăng nhập để xem lại kết quả OCR, mô tả ảnh và các bài báo đã đọc.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.muted,
+                    height: 1.5,
                   ),
                 ),
               ],
             ),
           ),
         ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+        const SizedBox(height: 12),
+        _voiceCard(),
+        const SizedBox(height: 12),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _chip("Tất cả", null),
-                  const SizedBox(width: 8),
-                  _chip("Quét chữ", "ocr"),
-                  const SizedBox(width: 8),
-                  _chip("Mô tả ảnh", "caption"),
-                  const SizedBox(width: 8),
-                  _chip("Đọc báo", "read_url"),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: "Tải lại",
-                    onPressed: () =>
-                        context.read<HistoryController>().load(type: _type),
-                    icon: const Icon(Icons.refresh),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Column(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.brandBrown,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    onPressed: _openLogin,
+                    icon: const Icon(Icons.login_rounded),
+                    label: const Text(
+                      'Đăng nhập',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.brandBrown,
+                      side: const BorderSide(color: AppColors.cardStroke),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    onPressed: _openRegister,
+                    icon: const Icon(Icons.person_add_alt_1_rounded),
+                    label: const Text(
+                      'Đăng ký',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-        const SizedBox(height: 10),
-        if (c.loading)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(18),
-              child: CircularProgressIndicator(),
-            ),
-          )
-        else if (c.items.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text("Chưa có lịch sử."),
-          )
-        else
-          ...c.items.map((it) {
-            final preview = it.resultText.trim().replaceAll("\n", " ");
-            final title = preview.isEmpty ? "(Trống)" : preview;
-
-            return Card(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => HistoryDetailScreen(item: it),
-                    ),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (it.createdAt.isNotEmpty)
-                            Text(
-                              it.createdAt,
-                              style: const TextStyle(color: Colors.black54),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        "Loại: ${it.actionType}",
-                        style: const TextStyle(
-                          color: Colors.black54,
-                          fontSize: 13,
-                        ),
-                      ),
-                      if (it.inputData.trim().isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          it.inputData,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.black54,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          TextButton(
-                            onPressed: () => c.speakItem(it.resultText),
-                            child: const Text("Đọc lại"),
-                          ),
-                          const SizedBox(width: 10),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => HistoryDetailScreen(item: it),
-                                ),
-                              );
-                            },
-                            child: const Text("Mở lại"),
-                          ),
-                          const SizedBox(width: 10),
-                          TextButton(
-                            onPressed: () => c.remove(it.id),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.red,
-                            ),
-                            child: const Text("Xoá"),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
       ],
     );
   }
 
-  Widget _chip(String label, String? typeValue) {
-    final selected = _type == typeValue;
+  Widget _historyItemCard(HistoryItem item, int index) {
+    final preview = item.resultText.trim().replaceAll('\n', ' ');
+    final title = preview.isEmpty ? '(Trống)' : preview;
+    final typeLabel = _labelOf(item.actionType);
 
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      selectedColor: AppColors.cardStroke.withOpacity(0.6),
-      onSelected: (_) {
-        setState(() => _type = typeValue);
-        context.read<HistoryController>().load(type: _type);
-      },
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => HistoryDetailScreen(item: item),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppColors.bgBeige,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.brandBrown,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.bgBeige,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            typeLabel,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.brandBrown,
+                            ),
+                          ),
+                        ),
+                        if (item.createdAt.trim().isNotEmpty)
+                          Text(
+                            item.createdAt,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: AppColors.muted,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  height: 1.35,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () => context.read<HistoryController>().speakItem(item.resultText),
+                    icon: const Icon(Icons.volume_up_rounded, size: 18),
+                    label: const Text('Đọc'),
+                  ),
+                  const SizedBox(width: 4),
+                  TextButton.icon(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => HistoryDetailScreen(item: item),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                    label: const Text('Mở'),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Xóa',
+                    onPressed: () => context.read<HistoryController>().remove(item.id),
+                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _loggedInView(HistoryController c) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Lịch sử hoạt động',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    height: 1.2,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Bộ lọc hiện tại: ${_labelOf(_type)}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.muted,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _voiceCard(),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Bộ lọc',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _chip('Tất cả', null),
+                      const SizedBox(width: 8),
+                      _chip('Quét chữ', 'ocr'),
+                      const SizedBox(width: 8),
+                      _chip('Mô tả ảnh', 'caption'),
+                      const SizedBox(width: 8),
+                      _chip('Đọc báo', 'read_url'),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'Tải lại',
+                        onPressed: () => context.read<HistoryController>().load(type: _type),
+                        icon: const Icon(Icons.refresh_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (c.loading)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (c.items.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+              child: Column(
+                children: const [
+                  Icon(
+                    Icons.history_toggle_off_rounded,
+                    size: 42,
+                    color: AppColors.brandBrown,
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'Chưa có lịch sử phù hợp với bộ lọc hiện tại.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '${c.items.length} mục',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted,
+                ),
+              ),
+            ),
+            ...List.generate(
+              c.items.length,
+                  (index) => _historyItemCard(c.items[index] as HistoryItem, index),
+            ),
+          ],
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loggedIn = context.select<AuthController, bool>((a) => a.loggedIn);
+    final c = context.watch<HistoryController>();
+
+    _maybeLoadInitial(loggedIn);
+    _maybeAnnounce(loggedIn);
+
+    return HoldToListenLayer(
+      onTriggered: _startVoice,
+      child: loggedIn ? _loggedInView(c) : _guestView(),
     );
   }
 }
