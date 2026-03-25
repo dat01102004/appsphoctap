@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/errors/api_exception.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
@@ -16,17 +17,21 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  final _fullName = TextEditingController();
   final _email = TextEditingController();
+  final _phone = TextEditingController();
   final _pass = TextEditingController();
 
+  final _fullNameFocus = FocusNode();
   final _emailFocus = FocusNode();
+  final _phoneFocus = FocusNode();
   final _passFocus = FocusNode();
 
   bool loading = false;
   bool _hidePassword = true;
-
   int _listenEpoch = 0;
   String _lastPromptNorm = '';
+  String? _errorText;
 
   @override
   void initState() {
@@ -39,9 +44,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     _listenEpoch++;
+    _fullName.dispose();
     _email.dispose();
+    _phone.dispose();
     _pass.dispose();
+    _fullNameFocus.dispose();
     _emailFocus.dispose();
+    _phoneFocus.dispose();
     _passFocus.dispose();
     context.read<VoiceController>().stop();
     super.dispose();
@@ -50,10 +59,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _announceIntro() async {
     await _speak(
       'Màn hình đăng ký. '
-          'Bạn có thể nhập tay hoặc dùng giọng nói. '
-          'Ví dụ: nói email dat a còng gmail chấm com, '
-          'mật khẩu một hai ba bốn năm sáu, '
-          'sau đó nói đăng ký.',
+          'Bạn cần nhập họ và tên, email, số điện thoại và mật khẩu. '
+          'Bạn cũng có thể dùng giọng nói. '
+          'Ví dụ: họ tên Nguyễn Văn A, email người dùng a còng gmail chấm com, '
+          'số điện thoại 0 9 1 2 3 4 5 6 7 8, mật khẩu người dùng một hai ba, sau đó nói đăng ký.',
     );
   }
 
@@ -81,12 +90,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     await voice.start(
       onFinal: (text) async {
         if (!mounted || epoch != _listenEpoch) return;
-
         final normalized = _norm(text);
-        if (normalized.isEmpty || _isPromptEcho(normalized)) {
-          return;
-        }
-
+        if (normalized.isEmpty || _isPromptEcho(normalized)) return;
         await _handleVoiceCommand(text);
       },
     );
@@ -119,38 +124,57 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    if (n.contains('dang nhap') || n.contains('mo dang nhap') || n.contains('sang dang nhap')) {
+    if (n.contains('dang nhap') ||
+        n.contains('mo dang nhap') ||
+        n.contains('sang dang nhap')) {
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
       return;
     }
 
+    if (n.contains('xoa ho ten')) {
+      _fullName.clear();
+      setState(() => _errorText = null);
+      await _speak('Đã xóa họ và tên.');
+      return;
+    }
+
     if (n.contains('xoa email')) {
       _email.clear();
-      setState(() {});
+      setState(() => _errorText = null);
       await _speak('Đã xóa email.');
+      return;
+    }
+
+    if (n.contains('xoa so dien thoai')) {
+      _phone.clear();
+      setState(() => _errorText = null);
+      await _speak('Đã xóa số điện thoại.');
       return;
     }
 
     if (n.contains('xoa mat khau')) {
       _pass.clear();
-      setState(() {});
+      setState(() => _errorText = null);
       await _speak('Đã xóa mật khẩu.');
       return;
     }
 
-    if (n.contains('doc email')) {
-      final value = _email.text.trim().isEmpty ? 'Email đang trống.' : 'Email hiện tại là ${_email.text.trim()}.';
-      await _speak(value);
-      return;
-    }
-
-    if (n.contains('doc mat khau')) {
-      final value = _pass.text.trim().isEmpty
-          ? 'Mật khẩu đang trống.'
-          : 'Mật khẩu hiện có ${_pass.text.trim().length} ký tự.';
-      await _speak(value);
+    final fullNameText = _extractByPrefixes(raw, const [
+      'họ tên',
+      'ho ten',
+      'tên',
+      'ten',
+      'họ và tên',
+      'ho va ten',
+      'nhập họ tên',
+    ]);
+    if (fullNameText != null && fullNameText.trim().isNotEmpty) {
+      _fullName.text = _normalizeFullName(fullNameText);
+      _fullNameFocus.requestFocus();
+      setState(() => _errorText = null);
+      await _speak('Đã điền họ và tên ${_fullName.text}.');
       return;
     }
 
@@ -164,8 +188,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (emailText != null && emailText.trim().isNotEmpty) {
       _email.text = _normalizeSpokenEmail(emailText);
       _emailFocus.requestFocus();
-      setState(() {});
+      setState(() => _errorText = null);
       await _speak('Đã điền email ${_email.text}.');
+      return;
+    }
+
+    final phoneText = _extractByPrefixes(raw, const [
+      'so dien thoai',
+      'số điện thoại',
+      'dien thoai',
+      'nhập số điện thoại',
+    ]);
+    if (phoneText != null && phoneText.trim().isNotEmpty) {
+      _phone.text = _normalizePhone(phoneText);
+      _phoneFocus.requestFocus();
+      setState(() => _errorText = null);
+      await _speak('Đã điền số điện thoại ${_phone.text}.');
       return;
     }
 
@@ -179,14 +217,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (passText != null && passText.trim().isNotEmpty) {
       _pass.text = _normalizeSpokenPassword(passText);
       _passFocus.requestFocus();
-      setState(() {});
+      setState(() => _errorText = null);
       await _speak('Đã điền mật khẩu.');
+      return;
+    }
+
+    if (n.contains('chon ho ten') || n.contains('o ho ten')) {
+      _fullNameFocus.requestFocus();
+      await _speak('Ô họ và tên đang được chọn.');
       return;
     }
 
     if (n.contains('chon email') || n.contains('o email')) {
       _emailFocus.requestFocus();
       await _speak('Ô email đang được chọn.');
+      return;
+    }
+
+    if (n.contains('chon so dien thoai') || n.contains('o so dien thoai')) {
+      _phoneFocus.requestFocus();
+      await _speak('Ô số điện thoại đang được chọn.');
       return;
     }
 
@@ -203,8 +253,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     await _speak(
       'Mình chưa hiểu lệnh. '
-          'Bạn có thể nói email cộng nội dung, '
-          'mật khẩu cộng nội dung, đăng ký, quay lại hoặc xóa email.',
+          'Bạn có thể nói họ tên cộng nội dung, email cộng nội dung, số điện thoại cộng nội dung, mật khẩu cộng nội dung hoặc đăng ký.',
     );
   }
 
@@ -220,33 +269,48 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
+  String _stripVietnamese(String input) {
+    var s = input.toLowerCase().trim();
+    const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
+        'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+    const to = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
+        'ooooooooooooooooouuuuuuuuuuuyyyyyd';
+
+    for (int i = 0; i < from.length; i++) {
+      s = s.replaceAll(from[i], to[i]);
+    }
+    return s;
+  }
+
+  String _normalizeFullName(String raw) {
+    return raw
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .split(' ')
+        .map((e) {
+      if (e.isEmpty) return e;
+      final lower = e.toLowerCase();
+      return lower[0].toUpperCase() + lower.substring(1);
+    })
+        .join(' ');
+  }
+
   String _normalizeSpokenEmail(String raw) {
-    String text = raw.toLowerCase().trim();
+    String text = _stripVietnamese(raw);
 
     final replacements = <String, String>{
-      ' a còng ': '@',
       ' a cong ': '@',
       'acong': '@',
-      ' còng ': '@',
       ' cong ': '@',
-      ' a móc ': '@',
       ' a moc ': '@',
-      ' chấm ': '.',
       ' cham ': '.',
-      ' chấmcom ': '.com',
-      ' chấm com ': '.com',
+      ' chamcom ': '.com',
       ' cham com ': '.com',
-      ' chấm nét ': '.net',
       ' cham net ': '.net',
-      ' chấm vê en ': '.vn',
       ' cham vn ': '.vn',
-      ' gờ meo ': 'gmail',
       ' go meo ': 'gmail',
       ' gi meo ': 'gmail',
-      ' gmail ': 'gmail',
-      ' gạch dưới ': '_',
       ' gach duoi ': '_',
-      ' gạch ngang ': '-',
       ' gach ngang ': '-',
     };
 
@@ -260,56 +324,78 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   String _normalizeSpokenPassword(String raw) {
-    String text = raw.trim().toLowerCase();
+    String text = _stripVietnamese(raw);
 
     final map = <String, String>{
-      'không': '0',
       'khong': '0',
-      'một': '1',
       'mot': '1',
       'hai': '2',
       'ba': '3',
-      'bốn': '4',
       'bon': '4',
-      'tư': '4',
       'tu': '4',
-      'năm': '5',
       'nam': '5',
-      'lăm': '5',
       'lam': '5',
-      'sáu': '6',
       'sau': '6',
-      'bảy': '7',
       'bay': '7',
-      'tám': '8',
       'tam': '8',
-      'chín': '9',
       'chin': '9',
+      ' gach ngang ': '-',
+      ' gach duoi ': '_',
+      ' cham ': '.',
+      ' a cong ': '@',
     };
 
+    text = ' $text ';
     map.forEach((k, v) {
-      text = text.replaceAll(RegExp('\\b$k\\b'), v);
+      text = text.replaceAll(k, v);
     });
 
     text = text.replaceAll(' ', '');
-    return text;
+    return text.trim();
+  }
+
+  String _normalizePhone(String raw) {
+    var s = _stripVietnamese(raw);
+    final map = <String, String>{
+      'khong': '0',
+      'mot': '1',
+      'hai': '2',
+      'ba': '3',
+      'bon': '4',
+      'tu': '4',
+      'nam': '5',
+      'lam': '5',
+      'sau': '6',
+      'bay': '7',
+      'tam': '8',
+      'chin': '9',
+    };
+
+    s = ' $s ';
+    map.forEach((k, v) {
+      s = s.replaceAll(RegExp('\\b$k\\b'), v);
+    });
+
+    return s.replaceAll(RegExp(r'[^0-9]'), '');
+  }
+
+  String _friendlyRegisterError(Object error) {
+    if (error is ApiException) {
+      final msg = error.friendlyMessage().toLowerCase();
+      if (msg.contains('email đã tồn tại') || msg.contains('email da ton tai')) {
+        return 'Email này đã được đăng ký.';
+      }
+      if (msg.contains('số điện thoại đã tồn tại') ||
+          msg.contains('so dien thoai da ton tai')) {
+        return 'Số điện thoại này đã được đăng ký.';
+      }
+      return error.friendlyMessage();
+    }
+    return 'Đăng ký thất bại. Vui lòng thử lại.';
   }
 
   String _norm(String input) {
-    var s = input.toLowerCase().trim();
-    const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
-        'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ'
-        'ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨ'
-        'ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ';
-    const to = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
-        'ooooooooooooooooouuuuuuuuuuuyyyyyd'
-        'AAAAAAAAAAAAAAAAAEEEEEEEEEEEIIIII'
-        'OOOOOOOOOOOOOOOOOUUUUUUUUUUUYYYYYD';
-
-    for (int i = 0; i < from.length; i++) {
-      s = s.replaceAll(from[i], to[i]);
-    }
-
+    var s = _stripVietnamese(input);
     s = s.replaceAll(RegExp(r'[^a-z0-9@\.\s_]'), ' ');
     s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
     return s;
@@ -318,39 +404,70 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _submit() async {
     if (loading) return;
 
-    final email = _email.text.trim();
-    final pass = _pass.text.trim();
+    final fullName = _normalizeFullName(_fullName.text);
+    final email = _normalizeSpokenEmail(_email.text);
+    final phone = _normalizePhone(_phone.text);
+    final pass = _normalizeSpokenPassword(_pass.text);
+
+    _fullName.text = fullName;
+    _email.text = email;
+    _phone.text = phone;
+    _pass.text = pass;
+
+    if (fullName.isEmpty) {
+      _fullNameFocus.requestFocus();
+      setState(() => _errorText = 'Bạn chưa nhập họ và tên.');
+      await _speak('Bạn chưa nhập họ và tên.');
+      return;
+    }
 
     if (email.isEmpty) {
       _emailFocus.requestFocus();
+      setState(() => _errorText = 'Bạn chưa nhập email.');
       await _speak('Bạn chưa nhập email.');
+      return;
+    }
+
+    if (phone.isEmpty) {
+      _phoneFocus.requestFocus();
+      setState(() => _errorText = 'Bạn chưa nhập số điện thoại.');
+      await _speak('Bạn chưa nhập số điện thoại.');
       return;
     }
 
     if (pass.isEmpty) {
       _passFocus.requestFocus();
+      setState(() => _errorText = 'Bạn chưa nhập mật khẩu.');
       await _speak('Bạn chưa nhập mật khẩu.');
       return;
     }
 
     if (pass.length < 6) {
       _passFocus.requestFocus();
+      setState(() => _errorText = 'Mật khẩu cần có ít nhất 6 ký tự.');
       await _speak('Mật khẩu cần có ít nhất 6 ký tự.');
       return;
     }
 
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+      _errorText = null;
+    });
 
     try {
-      await context.read<AuthController>().register(email, pass);
+      await context.read<AuthController>().register(
+        fullName: fullName,
+        email: email,
+        phone: phone,
+        password: pass,
+      );
       if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
-      await _speak('Đăng ký thất bại. Vui lòng thử lại.');
+      final message = _friendlyRegisterError(e);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi: $e')),
-      );
+      setState(() => _errorText = message);
+      await _speak(message);
     } finally {
       if (mounted) {
         setState(() => loading = false);
@@ -556,7 +673,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         SizedBox(height: 10),
                         Text(
-                          'Nhập email và mật khẩu để bắt đầu lưu lịch sử OCR, caption và đọc báo.',
+                          'Nhập họ và tên, email, số điện thoại và mật khẩu để bắt đầu lưu lịch sử sử dụng.',
                           style: TextStyle(
                             fontSize: 14,
                             color: AppColors.muted,
@@ -571,6 +688,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 _voiceCard(),
                 const SizedBox(height: 12),
                 _fieldCard(
+                  title: 'Họ và tên',
+                  hint: 'Nguyễn Văn A',
+                  controller: _fullName,
+                  focusNode: _fullNameFocus,
+                  icon: Icons.person_outline_rounded,
+                  obscure: false,
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _emailFocus.requestFocus(),
+                  helper: 'Mẹo voice: nói “họ tên Nguyễn Văn A”.',
+                  onTapCard: () async {
+                    _fullNameFocus.requestFocus();
+                    await _speak('Ô họ và tên đang được chọn.');
+                  },
+                ),
+                const SizedBox(height: 12),
+                _fieldCard(
                   title: 'Email',
                   hint: 'example@gmail.com',
                   controller: _email,
@@ -579,8 +712,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   obscure: false,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
-                  onSubmitted: (_) => _passFocus.requestFocus(),
-                  helper: 'Mẹo voice: nói “email dat a còng gmail chấm com”.',
+                  onSubmitted: (_) => _phoneFocus.requestFocus(),
+                  helper: 'Mẹo voice: nói “email người dùng a còng gmail chấm com”.',
                   onTapCard: () async {
                     _emailFocus.requestFocus();
                     await _speak('Ô email đang được chọn.');
@@ -588,15 +721,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 12),
                 _fieldCard(
+                  title: 'Số điện thoại',
+                  hint: '0912345678',
+                  controller: _phone,
+                  focusNode: _phoneFocus,
+                  icon: Icons.phone_outlined,
+                  obscure: false,
+                  keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _passFocus.requestFocus(),
+                  helper: 'Mẹo voice: nói “số điện thoại 0 9 1 2 3 4 5 6 7 8”.',
+                  onTapCard: () async {
+                    _phoneFocus.requestFocus();
+                    await _speak('Ô số điện thoại đang được chọn.');
+                  },
+                ),
+                const SizedBox(height: 12),
+                _fieldCard(
                   title: 'Mật khẩu',
-                  hint: 'Tối thiểu 6 ký tự',
+                  hint: 'Nhập mật khẩu',
                   controller: _pass,
                   focusNode: _passFocus,
                   icon: Icons.lock_outline_rounded,
                   obscure: _hidePassword,
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _submit(),
-                  helper: 'Mẹo voice: nói “mật khẩu một hai ba bốn năm sáu”.',
+                  helper: 'Mẹo voice: nói “mật khẩu người dùng một hai ba”.',
                   trailing: IconButton(
                     onPressed: () {
                       setState(() => _hidePassword = !_hidePassword);
@@ -611,6 +761,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     await _speak('Ô mật khẩu đang được chọn.');
                   },
                 ),
+                if (_errorText != null) ...[
+                  const SizedBox(height: 12),
+                  Card(
+                    color: const Color(0xFFFFF4F4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _errorText!,
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 SizedBox(
                   height: 54,

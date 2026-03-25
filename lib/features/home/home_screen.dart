@@ -523,7 +523,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_isLogoutCommand(text)) {
       if (!auth.loggedIn) {
-        await _say('Bạn đang ở chế độ khách nên chưa có tài khoản nào đang đăng nhập.', title: 'Tài khoản');
+        await _say(
+          'Bạn đang ở chế độ khách nên chưa có tài khoản nào đang đăng nhập.',
+          title: 'Tài khoản',
+        );
         if (!mounted) return;
         await _startVoiceOnce();
         return;
@@ -543,7 +546,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_isRegisterCommand(text)) {
       if (auth.loggedIn) {
         await _say(
-          'Bạn đang đăng nhập bằng ${auth.email ?? "tài khoản hiện tại"}. Nếu muốn tạo tài khoản khác, bạn có thể đăng xuất trước.',
+          'Bạn đang đăng nhập bằng ${auth.displayName}. Nếu muốn tạo tài khoản khác, bạn có thể đăng xuất trước.',
           title: 'Đăng ký',
         );
         if (!mounted) return;
@@ -560,7 +563,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_isLoginCommand(text)) {
       if (auth.loggedIn) {
         await _say(
-          'Bạn đã đăng nhập rồi. Tài khoản hiện tại là ${auth.email ?? "TalkSight"}.',
+          'Bạn đã đăng nhập rồi. Tài khoản hiện tại là ${auth.displayName}.',
           title: 'Đăng nhập',
         );
         if (!mounted) return;

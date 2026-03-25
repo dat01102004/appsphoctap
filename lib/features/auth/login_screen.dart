@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/errors/api_exception.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
@@ -25,9 +26,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool loading = false;
   bool _hidePassword = true;
-
   int _listenEpoch = 0;
   String _lastPromptNorm = '';
+  String? _errorText;
 
   @override
   void initState() {
@@ -53,8 +54,8 @@ class _LoginScreenState extends State<LoginScreen> {
       'Màn hình đăng nhập. '
           'Bạn có thể chạm vào ô email hoặc mật khẩu để nhập tay. '
           'Bạn cũng có thể dùng giọng nói. '
-          'Ví dụ: nói email dat a còng gmail chấm com, '
-          'mật khẩu một hai ba bốn năm sáu, '
+          'Ví dụ: nói email người dùng a còng gmail chấm com, '
+          'mật khẩu người dùng một hai ba, '
           'hoặc nói đăng nhập.',
     );
   }
@@ -83,12 +84,8 @@ class _LoginScreenState extends State<LoginScreen> {
     await voice.start(
       onFinal: (text) async {
         if (!mounted || epoch != _listenEpoch) return;
-
         final normalized = _norm(text);
-        if (normalized.isEmpty || _isPromptEcho(normalized)) {
-          return;
-        }
-
+        if (normalized.isEmpty || _isPromptEcho(normalized)) return;
         await _handleVoiceCommand(text);
       },
     );
@@ -134,29 +131,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (n.contains('xoa email')) {
       _email.clear();
-      setState(() {});
+      setState(() => _errorText = null);
       await _speak('Đã xóa email.');
       return;
     }
 
     if (n.contains('xoa mat khau')) {
       _pass.clear();
-      setState(() {});
+      setState(() => _errorText = null);
       await _speak('Đã xóa mật khẩu.');
-      return;
-    }
-
-    if (n.contains('doc email')) {
-      final value = _email.text.trim().isEmpty ? 'Email đang trống.' : 'Email hiện tại là ${_email.text.trim()}.';
-      await _speak(value);
-      return;
-    }
-
-    if (n.contains('doc mat khau')) {
-      final value = _pass.text.trim().isEmpty
-          ? 'Mật khẩu đang trống.'
-          : 'Mật khẩu hiện có ${_pass.text.trim().length} ký tự.';
-      await _speak(value);
       return;
     }
 
@@ -170,7 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (emailText != null && emailText.trim().isNotEmpty) {
       _email.text = _normalizeSpokenEmail(emailText);
       _emailFocus.requestFocus();
-      setState(() {});
+      setState(() => _errorText = null);
       await _speak('Đã điền email ${_email.text}.');
       return;
     }
@@ -185,20 +168,20 @@ class _LoginScreenState extends State<LoginScreen> {
     if (passText != null && passText.trim().isNotEmpty) {
       _pass.text = _normalizeSpokenPassword(passText);
       _passFocus.requestFocus();
-      setState(() {});
+      setState(() => _errorText = null);
       await _speak('Đã điền mật khẩu.');
       return;
     }
 
     if (n.contains('chon email') || n.contains('o email')) {
       _emailFocus.requestFocus();
-      await _speak('Ô email đang được chọn. Bạn có thể nhập tay hoặc nói email cộng nội dung.');
+      await _speak('Ô email đang được chọn.');
       return;
     }
 
     if (n.contains('chon mat khau') || n.contains('o mat khau')) {
       _passFocus.requestFocus();
-      await _speak('Ô mật khẩu đang được chọn. Bạn có thể nhập tay hoặc nói mật khẩu cộng nội dung.');
+      await _speak('Ô mật khẩu đang được chọn.');
       return;
     }
 
@@ -209,8 +192,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await _speak(
       'Mình chưa hiểu lệnh. '
-          'Bạn có thể nói email cộng nội dung, '
-          'mật khẩu cộng nội dung, đăng nhập, mở đăng ký, xóa email hoặc xóa mật khẩu.',
+          'Bạn có thể nói email cộng nội dung, mật khẩu cộng nội dung, đăng nhập hoặc mở đăng ký.',
     );
   }
 
@@ -226,36 +208,35 @@ class _LoginScreenState extends State<LoginScreen> {
     return null;
   }
 
+  String _stripVietnamese(String input) {
+    var s = input.toLowerCase().trim();
+    const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
+        'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+    const to = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
+        'ooooooooooooooooouuuuuuuuuuuyyyyyd';
+
+    for (int i = 0; i < from.length; i++) {
+      s = s.replaceAll(from[i], to[i]);
+    }
+    return s;
+  }
+
   String _normalizeSpokenEmail(String raw) {
-    String text = raw.toLowerCase().trim();
+    String text = _stripVietnamese(raw);
 
     final replacements = <String, String>{
-      ' a còng ': '@',
       ' a cong ': '@',
       'acong': '@',
-      ' còng ': '@',
       ' cong ': '@',
-      ' a móc ': '@',
       ' a moc ': '@',
-      ' chấm ': '.',
       ' cham ': '.',
-      ' chấmcom ': '.com',
-      ' chấm com ': '.com',
+      ' chamcom ': '.com',
       ' cham com ': '.com',
-      ' chấm nét ': '.net',
       ' cham net ': '.net',
-      ' chấm vê en ': '.vn',
       ' cham vn ': '.vn',
-      ' gờ meo ': 'gmail',
       ' go meo ': 'gmail',
       ' gi meo ': 'gmail',
-      ' gmail ': 'gmail',
-      ' i meo ': 'email',
-      ' ích xì ': 'x',
-      ' ích ': 'x',
-      ' gạch dưới ': '_',
       ' gach duoi ': '_',
-      ' gạch ngang ': '-',
       ' gach ngang ': '-',
     };
 
@@ -269,56 +250,62 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   String _normalizeSpokenPassword(String raw) {
-    String text = raw.trim().toLowerCase();
+    String text = _stripVietnamese(raw);
 
     final map = <String, String>{
-      'không': '0',
       'khong': '0',
-      'một': '1',
       'mot': '1',
       'hai': '2',
       'ba': '3',
-      'bốn': '4',
       'bon': '4',
-      'tư': '4',
       'tu': '4',
-      'năm': '5',
       'nam': '5',
-      'lăm': '5',
       'lam': '5',
-      'sáu': '6',
       'sau': '6',
-      'bảy': '7',
       'bay': '7',
-      'tám': '8',
       'tam': '8',
-      'chín': '9',
       'chin': '9',
+      ' gach ngang ': '-',
+      ' gach duoi ': '_',
+      ' cham ': '.',
+      ' a cong ': '@',
     };
 
+    text = ' $text ';
     map.forEach((k, v) {
-      text = text.replaceAll(RegExp('\\b$k\\b'), v);
+      text = text.replaceAll(k, v);
     });
 
     text = text.replaceAll(' ', '');
-    return text;
+    return text.trim();
+  }
+
+  String _normalizeEmailForSubmit(String raw) {
+    return _normalizeSpokenEmail(raw);
+  }
+
+  String _normalizePasswordForSubmit(String raw) {
+    return _normalizeSpokenPassword(raw);
+  }
+
+  String _friendlyAuthError(Object error) {
+    if (error is ApiException) {
+      final msg = error.friendlyMessage().toLowerCase();
+      if (error.statusCode == 401 ||
+          msg.contains('sai email') ||
+          msg.contains('sai mật khẩu')) {
+        return 'Sai email hoặc mật khẩu.';
+      }
+      if (msg.contains('not found') || msg.contains('không tồn tại')) {
+        return 'Tài khoản không tồn tại.';
+      }
+      return error.friendlyMessage();
+    }
+    return 'Đăng nhập thất bại. Vui lòng kiểm tra lại email hoặc mật khẩu.';
   }
 
   String _norm(String input) {
-    var s = input.toLowerCase().trim();
-    const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
-        'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ'
-        'ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨ'
-        'ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ';
-    const to = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
-        'ooooooooooooooooouuuuuuuuuuuyyyyyd'
-        'AAAAAAAAAAAAAAAAAEEEEEEEEEEEIIIII'
-        'OOOOOOOOOOOOOOOOOUUUUUUUUUUUYYYYYD';
-
-    for (int i = 0; i < from.length; i++) {
-      s = s.replaceAll(from[i], to[i]);
-    }
-
+    var s = _stripVietnamese(input);
     s = s.replaceAll(RegExp(r'[^a-z0-9@\.\s_]'), ' ');
     s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
     return s;
@@ -327,33 +314,40 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _submit() async {
     if (loading) return;
 
-    final email = _email.text.trim();
-    final pass = _pass.text;
+    final email = _normalizeEmailForSubmit(_email.text);
+    final pass = _normalizePasswordForSubmit(_pass.text);
+
+    _email.text = email;
+    _pass.text = pass;
 
     if (email.isEmpty) {
       _emailFocus.requestFocus();
+      setState(() => _errorText = 'Bạn chưa nhập email.');
       await _speak('Bạn chưa nhập email.');
       return;
     }
 
     if (pass.isEmpty) {
       _passFocus.requestFocus();
+      setState(() => _errorText = 'Bạn chưa nhập mật khẩu.');
       await _speak('Bạn chưa nhập mật khẩu.');
       return;
     }
 
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+      _errorText = null;
+    });
 
     try {
       await context.read<AuthController>().login(email, pass);
       if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {
-      await _speak('Đăng nhập thất bại. Vui lòng kiểm tra lại email hoặc mật khẩu.');
+      final message = _friendlyAuthError(e);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi: $e')),
-      );
+      setState(() => _errorText = message);
+      await _speak(message);
     } finally {
       if (mounted) {
         setState(() => loading = false);
@@ -368,12 +362,11 @@ class _LoginScreenState extends State<LoginScreen> {
     required FocusNode focusNode,
     required IconData icon,
     required bool obscure,
-    VoidCallback? trailingTap,
-    Widget? trailing,
     TextInputType? keyboardType,
     TextInputAction? textInputAction,
     ValueChanged<String>? onSubmitted,
     String? helper,
+    Widget? trailing,
     VoidCallback? onTapCard,
   }) {
     return Card(
@@ -585,7 +578,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
                   onSubmitted: (_) => _passFocus.requestFocus(),
-                  helper: 'Mẹo voice: nói “email dat a còng gmail chấm com”.',
+                  helper: 'Mẹo voice: nói “email người dùng a còng gmail chấm com”.',
                   onTapCard: () async {
                     _emailFocus.requestFocus();
                     await _speak('Ô email đang được chọn.');
@@ -601,7 +594,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   obscure: _hidePassword,
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _submit(),
-                  helper: 'Mẹo voice: nói “mật khẩu một hai ba bốn năm sáu”.',
+                  helper: 'Mẹo voice: nói “mật khẩu người dùng một hai ba”.',
                   trailing: IconButton(
                     onPressed: () {
                       setState(() => _hidePassword = !_hidePassword);
@@ -616,6 +609,30 @@ class _LoginScreenState extends State<LoginScreen> {
                     await _speak('Ô mật khẩu đang được chọn.');
                   },
                 ),
+                if (_errorText != null) ...[
+                  const SizedBox(height: 12),
+                  Card(
+                    color: const Color(0xFFFFF4F4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _errorText!,
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 SizedBox(
                   height: 54,

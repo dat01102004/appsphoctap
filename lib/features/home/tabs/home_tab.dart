@@ -53,7 +53,10 @@ class HomeTab extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   subtitle,
-                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
+                  ),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -75,8 +78,6 @@ class HomeTab extends StatelessWidget {
     );
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
@@ -84,11 +85,12 @@ class HomeTab extends StatelessWidget {
     final micTitle = isListening ? 'Đang nghe...' : 'Nhấn mic để nói';
     final micSub = isListening
         ? (lastWords.trim().isEmpty ? '...' : lastWords)
-        : 'Bạn có thể nói: đăng nhập, đăng ký, đọc báo, quét chữ, mô tả ảnh, xem lịch sử';
+        : 'Bạn có thể nói: đăng nhập, đọc báo, quét chữ, mô tả ảnh, xem lịch sử';
 
-    final primaryText = auth.loggedIn ? (auth.email ?? 'Người dùng') : 'Khách';
-    final secondaryText =
-    auth.loggedIn ? 'Lịch sử: Đang lưu trữ' : 'Lịch sử: Không lưu trữ';
+    final primaryText = auth.loggedIn ? auth.displayName : 'Khách';
+    final secondaryText = auth.loggedIn
+        ? 'Email: ${auth.email ?? ""}\nLịch sử: Đang lưu trữ'
+        : 'Lịch sử: Không lưu trữ';
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
@@ -185,9 +187,12 @@ class HomeTab extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         secondaryText,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 13,
                           color: Colors.black54,
+                          height: 1.35,
                         ),
                       ),
                     ],
