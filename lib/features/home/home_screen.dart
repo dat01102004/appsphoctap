@@ -771,7 +771,7 @@ class _HomeScreenState extends State<HomeScreen> {
         lastWords: voice.lastWords,
         onMicTap: _toggleMic,
       ),
-      const HistoryTab(),
+      HistoryTab(isActive: _index == 1),
       const TasksTab(),
       const SettingsTab(),
     ];

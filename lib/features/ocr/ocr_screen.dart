@@ -26,12 +26,12 @@ enum _OcrStage {
 }
 
 class OcrScreen extends StatefulWidget {
-  final Future Function()? onGoHome;
-  final Future Function()? onGoHistory;
-  final Future Function()? onGoTasks;
-  final Future Function()? onGoSettings;
-  final Future Function()? onOpenNews;
-  final Future Function()? onOpenCaption;
+  final Future<void> Function()? onGoHome;
+  final Future<void> Function()? onGoHistory;
+  final Future<void> Function()? onGoTasks;
+  final Future<void> Function()? onGoSettings;
+  final Future<void> Function()? onOpenNews;
+  final Future<void> Function()? onOpenCaption;
 
   const OcrScreen({
     super.key,
@@ -144,7 +144,6 @@ class _OcrScreenState extends State<OcrScreen> {
         if (!mounted || epoch != _listenEpoch) return;
 
         final n = _norm(text);
-
         if (n.isEmpty || _isEchoFromTts(n)) {
           await Future.delayed(const Duration(milliseconds: 350));
           if (!mounted || epoch != _listenEpoch) return;
@@ -259,7 +258,9 @@ class _OcrScreenState extends State<OcrScreen> {
       return;
     }
 
-    if (n.contains('doc bao') || n.contains('tin tuc') || n.contains('tin moi')) {
+    if (n.contains('doc bao') ||
+        n.contains('tin tuc') ||
+        n.contains('tin moi')) {
       await _popToRoot();
       if (widget.onOpenNews != null) {
         await widget.onOpenNews!();
@@ -421,6 +422,7 @@ class _OcrScreenState extends State<OcrScreen> {
   }
 
   int _createdAt(AssetEntity a) => a.createDateSecond ?? 0;
+
   int _modifiedAt(AssetEntity a) => a.modifiedDateSecond ?? 0;
 
   bool _isNewerAsset(AssetEntity a, AssetEntity b) {
@@ -462,10 +464,7 @@ class _OcrScreenState extends State<OcrScreen> {
       final Map<String, _RankedAsset> rankedById = {};
 
       for (final album in albums) {
-        final assets = await album.getAssetListPaged(
-          page: 0,
-          size: 50,
-        );
+        final assets = await album.getAssetListPaged(page: 0, size: 50);
         final priority = _albumPriority(album.name);
 
         for (final asset in assets) {
@@ -591,10 +590,9 @@ class _OcrScreenState extends State<OcrScreen> {
     _lastSpokenTitle = title;
     _lastSpokenText = value;
 
-    final preview =
-    value.length > 88 ? '${value.substring(0, 88)}...' : value;
-
+    final preview = value.length > 88 ? '${value.substring(0, 88)}...' : value;
     _player.setNow(title, preview, newDetails: value);
+
     await _tts.stop();
     await _tts.speak(value);
   }
@@ -656,7 +654,6 @@ class _OcrScreenState extends State<OcrScreen> {
 
   String _norm(String s) {
     s = s.toLowerCase().trim();
-
     const withDia =
         'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
     const without =
@@ -683,6 +680,247 @@ class _OcrScreenState extends State<OcrScreen> {
       case _OcrStage.idle:
         return 'Sẵn sàng.';
     }
+  }
+
+  Future<void> _openImagePreviewDialog() async {
+    if (_latestImagePath.trim().isEmpty) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            SizedBox(
+              width: double.infinity,
+              height: MediaQuery.of(context).size.height * 0.72,
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: Center(
+                  child: Image.file(
+                    File(_latestImagePath),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const _VisionImageErrorBox(
+                      message: 'Không mở được ảnh vừa chọn.',
+                      compact: false,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.14),
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVoiceBanner(VoiceController voice) {
+    final text = voice.isListening
+        ? (voice.lastWords.trim().isEmpty
+        ? 'Đang nghe lệnh...'
+        : 'Đang nghe: ${voice.lastWords}')
+        : _hintText();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.cardStroke.withValues(alpha: 0.78),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.brandBrown.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              voice.isListening
+                  ? Icons.mic_rounded
+                  : Icons.tips_and_updates_outlined,
+              color: AppColors.brandBrown,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Colors.black54,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImagePreviewCard() {
+    final hasImage = _latestImagePath.trim().isNotEmpty;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: AppColors.cardStroke.withValues(alpha: 0.80),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Ảnh vừa quét',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                if (hasImage)
+                  TextButton.icon(
+                    onPressed: _openImagePreviewDialog,
+                    icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                    label: const Text('Xem lớn'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: AppColors.brandBrown.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: hasImage
+                      ? GestureDetector(
+                    onTap: _openImagePreviewDialog,
+                    child: Image.file(
+                      File(_latestImagePath),
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) =>
+                      const _VisionImageErrorBox(
+                        message: 'Không mở được ảnh vừa chọn.',
+                      ),
+                    ),
+                  )
+                      : const _VisionPlaceholderBox(
+                    icon: Icons.photo_outlined,
+                    title: 'Chưa có ảnh',
+                    subtitle:
+                    'Ảnh bạn chụp hoặc chọn sẽ hiện lớn tại đây.',
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultCard(OcrController c) {
+    final result = c.text.trim();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: AppColors.cardStroke.withValues(alpha: 0.82),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Kết quả OCR',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: result.isEmpty
+                      ? null
+                      : () => _speakWithPlayer(
+                    result,
+                    title: 'Kết quả OCR',
+                  ),
+                  icon: const Icon(Icons.volume_up_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Hiển thị toàn bộ văn bản đã quét. Bạn có thể chọn để sao chép hoặc nghe lại.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.black54,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: AppColors.cardStroke.withValues(alpha: 0.72),
+                ),
+              ),
+              child: SelectableText(
+                result.isEmpty ? '(Trống)' : result,
+                style: const TextStyle(
+                  fontSize: 16,
+                  height: 1.65,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -712,88 +950,11 @@ class _OcrScreenState extends State<OcrScreen> {
             ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 220),
               children: [
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: AppColors.cardStroke.withValues(alpha: 0.75),
-                    ),
-                  ),
-                  child: Text(
-                    voice.isListening
-                        ? (voice.lastWords.trim().isEmpty
-                        ? 'Đang nghe lệnh...'
-                        : 'Đang nghe: ${voice.lastWords}')
-                        : _hintText(),
-                    style: const TextStyle(
-                      color: Colors.black54,
-                      height: 1.45,
-                    ),
-                  ),
-                ),
+                _buildVoiceBanner(voice),
                 const SizedBox(height: 16),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: AppColors.cardStroke.withValues(alpha: 0.8),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Kết quả OCR',
-                                style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: c.text.trim().isEmpty
-                                  ? null
-                                  : () => _speakWithPlayer(
-                                c.text,
-                                title: 'Kết quả OCR',
-                              ),
-                              icon: const Icon(Icons.volume_up_rounded),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        SelectableText(
-                          c.text.trim().isEmpty ? '(Trống)' : c.text,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            height: 1.6,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        if (_latestImagePath.trim().isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.file(
-                              File(_latestImagePath),
-                              height: 180,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
+                _buildImagePreviewCard(),
+                const SizedBox(height: 16),
+                _buildResultCard(c),
               ],
             ),
             if (c.loading)
@@ -856,6 +1017,90 @@ class _OcrScreenState extends State<OcrScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _VisionPlaceholderBox extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _VisionPlaceholderBox({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.brandBrown.withValues(alpha: 0.06),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 40, color: AppColors.brandBrown),
+          const SizedBox(height: 12),
+          const Text(
+            'Chưa có ảnh',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.black54,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VisionImageErrorBox extends StatelessWidget {
+  final String message;
+  final bool compact;
+
+  const _VisionImageErrorBox({
+    required this.message,
+    this.compact = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.brandBrown.withValues(alpha: 0.06),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.broken_image_outlined,
+            size: compact ? 36 : 48,
+            color: AppColors.brandBrown,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
+            ),
+          ),
+        ],
       ),
     );
   }

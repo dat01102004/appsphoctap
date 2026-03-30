@@ -26,12 +26,12 @@ enum _CaptionStage {
 }
 
 class CaptionScreen extends StatefulWidget {
-  final Future Function()? onGoHome;
-  final Future Function()? onGoHistory;
-  final Future Function()? onGoTasks;
-  final Future Function()? onGoSettings;
-  final Future Function()? onOpenNews;
-  final Future Function()? onOpenOcr;
+  final Future<void> Function()? onGoHome;
+  final Future<void> Function()? onGoHistory;
+  final Future<void> Function()? onGoTasks;
+  final Future<void> Function()? onGoSettings;
+  final Future<void> Function()? onOpenNews;
+  final Future<void> Function()? onOpenOcr;
 
   const CaptionScreen({
     super.key,
@@ -107,7 +107,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
     _stage = _CaptionStage.waitingGalleryChoice;
     if (mounted) setState(() {});
     await _promptAndListen(
-      'Bạn muốn mô tả ảnh mới nhất hay ảnh thứ 2?',
+      'Bạn muốn dùng ảnh mới nhất hay ảnh thứ 2?',
       _handleGalleryChoiceUtterance,
       settleMs: 1400,
     );
@@ -144,7 +144,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
         if (!mounted || epoch != _listenEpoch) return;
 
         final n = _norm(text);
-
         if (n.isEmpty || _isEchoFromTts(n)) {
           await Future.delayed(const Duration(milliseconds: 350));
           if (!mounted || epoch != _listenEpoch) return;
@@ -169,7 +168,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
 
     const fullPrompts = [
       'ban muon chup anh de mo ta hay chon anh tu thu vien',
-      'ban muon mo ta anh moi nhat hay anh thu 2',
+      'ban muon dung anh moi nhat hay anh thu 2',
       'ban muon su dung them tinh nang gi khac ban co the noi mo ta lai quet chu doc bao lich su tac vu cai dat trang chu hoac thoat',
     ];
 
@@ -259,7 +258,9 @@ class _CaptionScreenState extends State<CaptionScreen> {
       return;
     }
 
-    if (n.contains('doc bao') || n.contains('tin tuc') || n.contains('tin moi')) {
+    if (n.contains('doc bao') ||
+        n.contains('tin tuc') ||
+        n.contains('tin moi')) {
       await _popToRoot();
       if (widget.onOpenNews != null) {
         await widget.onOpenNews!();
@@ -421,6 +422,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
   }
 
   int _createdAt(AssetEntity a) => a.createDateSecond ?? 0;
+
   int _modifiedAt(AssetEntity a) => a.modifiedDateSecond ?? 0;
 
   bool _isNewerAsset(AssetEntity a, AssetEntity b) {
@@ -462,10 +464,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       final Map<String, _RankedAsset> rankedById = {};
 
       for (final album in albums) {
-        final assets = await album.getAssetListPaged(
-          page: 0,
-          size: 50,
-        );
+        final assets = await album.getAssetListPaged(page: 0, size: 50);
         final priority = _albumPriority(album.name);
 
         for (final asset in assets) {
@@ -551,7 +550,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       await _caption.runCaption(path, speakResult: false);
 
       final result = _caption.caption.trim().isEmpty
-          ? 'Mình chưa mô tả được ảnh rõ ràng.'
+          ? 'Mình chưa mô tả được nội dung ảnh rõ ràng.'
           : _caption.caption.trim();
 
       await _reloadHistoryIfNeeded(_caption.historyId);
@@ -591,10 +590,9 @@ class _CaptionScreenState extends State<CaptionScreen> {
     _lastSpokenTitle = title;
     _lastSpokenText = value;
 
-    final preview =
-    value.length > 88 ? '${value.substring(0, 88)}...' : value;
-
+    final preview = value.length > 88 ? '${value.substring(0, 88)}...' : value;
     _player.setNow(title, preview, newDetails: value);
+
     await _tts.stop();
     await _tts.speak(value);
   }
@@ -656,7 +654,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
 
   String _norm(String s) {
     s = s.toLowerCase().trim();
-
     const withDia =
         'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
     const without =
@@ -683,6 +680,247 @@ class _CaptionScreenState extends State<CaptionScreen> {
       case _CaptionStage.idle:
         return 'Sẵn sàng.';
     }
+  }
+
+  Future<void> _openImagePreviewDialog() async {
+    if (_latestImagePath.trim().isEmpty) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            SizedBox(
+              width: double.infinity,
+              height: MediaQuery.of(context).size.height * 0.72,
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: Center(
+                  child: Image.file(
+                    File(_latestImagePath),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const _VisionImageErrorBox(
+                      message: 'Không mở được ảnh vừa chọn.',
+                      compact: false,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.14),
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVoiceBanner(VoiceController voice) {
+    final text = voice.isListening
+        ? (voice.lastWords.trim().isEmpty
+        ? 'Đang nghe lệnh...'
+        : 'Đang nghe: ${voice.lastWords}')
+        : _hintText();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.cardStroke.withValues(alpha: 0.78),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: AppColors.brandBrown.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              voice.isListening
+                  ? Icons.mic_rounded
+                  : Icons.tips_and_updates_outlined,
+              color: AppColors.brandBrown,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Colors.black54,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImagePreviewCard() {
+    final hasImage = _latestImagePath.trim().isNotEmpty;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: AppColors.cardStroke.withValues(alpha: 0.80),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Ảnh vừa mô tả',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                if (hasImage)
+                  TextButton.icon(
+                    onPressed: _openImagePreviewDialog,
+                    icon: const Icon(Icons.open_in_full_rounded, size: 18),
+                    label: const Text('Xem lớn'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: AppColors.brandBrown.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: hasImage
+                      ? GestureDetector(
+                    onTap: _openImagePreviewDialog,
+                    child: Image.file(
+                      File(_latestImagePath),
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) =>
+                      const _VisionImageErrorBox(
+                        message: 'Không mở được ảnh vừa chọn.',
+                      ),
+                    ),
+                  )
+                      : const _VisionPlaceholderBox(
+                    icon: Icons.image_outlined,
+                    title: 'Chưa có ảnh',
+                    subtitle:
+                    'Ảnh bạn chụp hoặc chọn sẽ hiện lớn tại đây.',
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultCard(CaptionController c) {
+    final result = c.caption.trim();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: AppColors.cardStroke.withValues(alpha: 0.82),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Kết quả mô tả',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: result.isEmpty
+                      ? null
+                      : () => _speakWithPlayer(
+                    result,
+                    title: 'Kết quả mô tả',
+                  ),
+                  icon: const Icon(Icons.volume_up_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Hiển thị trọn vẹn phần mô tả để bạn dễ theo dõi và nghe lại bằng giọng nói.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.black54,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: AppColors.cardStroke.withValues(alpha: 0.72),
+                ),
+              ),
+              child: SelectableText(
+                result.isEmpty ? '(Trống)' : result,
+                style: const TextStyle(
+                  fontSize: 16,
+                  height: 1.65,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -712,88 +950,11 @@ class _CaptionScreenState extends State<CaptionScreen> {
             ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 220),
               children: [
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: AppColors.cardStroke.withValues(alpha: 0.75),
-                    ),
-                  ),
-                  child: Text(
-                    voice.isListening
-                        ? (voice.lastWords.trim().isEmpty
-                        ? 'Đang nghe lệnh...'
-                        : 'Đang nghe: ${voice.lastWords}')
-                        : _hintText(),
-                    style: const TextStyle(
-                      color: Colors.black54,
-                      height: 1.45,
-                    ),
-                  ),
-                ),
+                _buildVoiceBanner(voice),
                 const SizedBox(height: 16),
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.card,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: AppColors.cardStroke.withValues(alpha: 0.8),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Kết quả mô tả',
-                                style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: c.caption.trim().isEmpty
-                                  ? null
-                                  : () => _speakWithPlayer(
-                                c.caption,
-                                title: 'Kết quả mô tả',
-                              ),
-                              icon: const Icon(Icons.volume_up_rounded),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        SelectableText(
-                          c.caption.trim().isEmpty ? '(Trống)' : c.caption,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            height: 1.6,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        if (_latestImagePath.trim().isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.file(
-                              File(_latestImagePath),
-                              height: 180,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
+                _buildImagePreviewCard(),
+                const SizedBox(height: 16),
+                _buildResultCard(c),
               ],
             ),
             if (c.loading)
@@ -856,6 +1017,90 @@ class _CaptionScreenState extends State<CaptionScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _VisionPlaceholderBox extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _VisionPlaceholderBox({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.brandBrown.withValues(alpha: 0.06),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 40, color: AppColors.brandBrown),
+          const SizedBox(height: 12),
+          const Text(
+            'Chưa có ảnh',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.black54,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VisionImageErrorBox extends StatelessWidget {
+  final String message;
+  final bool compact;
+
+  const _VisionImageErrorBox({
+    required this.message,
+    this.compact = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.brandBrown.withValues(alpha: 0.06),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.broken_image_outlined,
+            size: compact ? 36 : 48,
+            color: AppColors.brandBrown,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
+            ),
+          ),
+        ],
       ),
     );
   }
