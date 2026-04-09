@@ -34,7 +34,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const double _fabSize = 66;
-  static const double _playerBottomOffset = 88; // Đặt gần hơn với Bottom Bar để cân đối
+  static const double _playerBottomOffset = 88;
 
   int _index = 0;
   bool _greeted = false;
@@ -235,7 +235,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     final voice = context.read<VoiceController>();
-    final tts = context.read<TtsService>();final player = context.read<PlayerController>();
+    final tts = context.read<TtsService>();
+    final player = context.read<PlayerController>();
 
     if (voice.isListening) return;
 
@@ -267,6 +268,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _goHome() async {
     if (!mounted) return;
     setState(() => _index = 0);
+    await _say(
+      'Về trang chủ. Bạn có thể nói đọc báo, quét chữ, mô tả ảnh hoặc chụp nhanh.',
+      title: 'TalkSight',
+    );
     await _resumeHomeVoice();
   }
 
@@ -276,6 +281,10 @@ class _HomeScreenState extends State<HomeScreen> {
     await context.read<VoiceController>().stop();
     await context.read<TtsService>().stop();
     setState(() => _index = 1);
+    await _say(
+      'Đã mở lịch sử. Tại đây bạn có thể xem lại kết quả quét chữ, mô tả ảnh và các bài báo đã đọc.',
+      title: 'Lịch sử',
+    );
   }
 
   Future<void> _goTasks() async {
@@ -284,6 +293,10 @@ class _HomeScreenState extends State<HomeScreen> {
     await context.read<VoiceController>().stop();
     await context.read<TtsService>().stop();
     setState(() => _index = 2);
+    await _say(
+      'Đã mở tác vụ. Đây là nơi bạn quản lý danh sách các việc cần làm và nhắc nhở cá nhân.',
+      title: 'Tác vụ',
+    );
   }
 
   Future<void> _goSettings() async {
@@ -292,6 +305,10 @@ class _HomeScreenState extends State<HomeScreen> {
     await context.read<VoiceController>().stop();
     await context.read<TtsService>().stop();
     setState(() => _index = 3);
+    await _say(
+      'Đã mở cài đặt. Bạn có thể điều chỉnh giọng đọc, tốc độ nói và các cấu hình hệ thống tại đây.',
+      title: 'Cài đặt',
+    );
   }
 
   Future<void> _openLoginScreen({bool resumeHomeVoiceIfReturn = true}) async {
@@ -444,48 +461,20 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
 
       case LiveVisionAction.history:
-        setState(() => _index = 1);
-        if (context.read<AuthController>().loggedIn) {
-          await _announceAfterReturn(
-            'Đã mở lịch sử.',
-            title: 'Lịch sử',
-            resumeVoiceIfHome: false,
-          );
-        } else {
-          await _announceAfterReturn(
-            'Bạn cần đăng nhập để xem lịch sử. Mình đã chuyển bạn tới lịch sử để chọn đăng nhập hoặc đăng ký.',
-            title: 'Lịch sử',
-            resumeVoiceIfHome: false,
-          );
-        }
+        await _goHistory();
         return;
 
       case LiveVisionAction.tasks:
-        setState(() => _index = 2);
-        await _announceAfterReturn(
-          'Đã mở tác vụ.',
-          title: 'Tác vụ',
-          resumeVoiceIfHome: false,
-        );
+        await _goTasks();
         return;
 
       case LiveVisionAction.settings:
-        setState(() => _index = 3);
-        await _announceAfterReturn(
-          'Đã mở cài đặt.',
-          title: 'Cài đặt',
-          resumeVoiceIfHome: false,
-        );
+        await _goSettings();
         return;
 
       case LiveVisionAction.home:
       default:
-        setState(() => _index = 0);
-        await _announceAfterReturn(
-          'Đã về trang chủ. Bạn có thể nói đọc báo, quét chữ, mô tả ảnh, lịch sử, cài đặt, tác vụ, chụp nhanh, đăng nhập hoặc đăng ký.',
-          title: 'TalkSight',
-          resumeVoiceIfHome: true,
-        );
+        await _goHome();
         return;
     }
   }
@@ -603,37 +592,22 @@ class _HomeScreenState extends State<HomeScreen> {
         text.contains('mo lich su') ||
         text.contains('vao lich su') ||
         text.contains('lich su')) {
-      setState(() => _index = 1);
-
-      if (!auth.loggedIn) {
-        await _say(
-          'Bạn cần đăng nhập để xem lịch sử đã lưu. Mình chuyển bạn tới lịch sử để bạn chọn đăng nhập hoặc đăng ký.',
-          title: 'Lịch sử',
-        );
-        return;
-      }
-
-      await _say('Mở lịch sử.', title: 'Lịch sử');
+      await _goHistory();
       return;
     }
 
     if (text.contains('tac vu')) {
-      setState(() => _index = 2);
-      await _say('Mở tác vụ.', title: 'Tác vụ');
+      await _goTasks();
       return;
     }
 
     if (text.contains('cai dat') || text.contains('setting')) {
-      setState(() => _index = 3);
-      await _say('Mở cài đặt.', title: 'Cài đặt');
+      await _goSettings();
       return;
     }
 
     if (text.contains('home') || text.contains('trang chu')) {
-      setState(() => _index = 0);
-      await _say('Về trang chủ.', title: 'Home');
-      if (!mounted) return;
-      await _resumeHomeVoice();
+      await _goHome();
       return;
     }
 
@@ -747,16 +721,20 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _onBottomBarTap(int value) async {
     if (!mounted) return;
 
-    setState(() => _index = value);
-
-    if (value == 0) {
-      await _resumeHomeVoice();
-      return;
+    switch (value) {
+      case 0:
+        await _goHome();
+        break;
+      case 1:
+        await _goHistory();
+        break;
+      case 2:
+        await _goTasks();
+        break;
+      case 3:
+        await _goSettings();
+        break;
     }
-
-    _listenEpoch++;
-    await context.read<VoiceController>().stop();
-    await context.read<TtsService>().stop();
   }
 
   @override
@@ -807,7 +785,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
         floatingActionButton: Transform.translate(
-          offset: const Offset(0, 32), // Hạ thấp nút Camera xuống đúng vị trí trung tâm notch
+          offset: const Offset(0, 32),
           child: SizedBox(
             width: _fabSize,
             height: _fabSize,
