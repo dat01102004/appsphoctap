@@ -34,7 +34,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const double _fabSize = 66;
-  static const double _playerBottomOffset = 74;
+  static const double _playerBottomOffset = 88; // Đặt gần hơn với Bottom Bar để cân đối
 
   int _index = 0;
   bool _greeted = false;
@@ -235,8 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     final voice = context.read<VoiceController>();
-    final tts = context.read<TtsService>();
-    final player = context.read<PlayerController>();
+    final tts = context.read<TtsService>();final player = context.read<PlayerController>();
 
     if (voice.isListening) return;
 
@@ -808,7 +807,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
         floatingActionButton: Transform.translate(
-          offset: const Offset(0, -8),
+          offset: const Offset(0, 32), // Hạ thấp nút Camera xuống đúng vị trí trung tâm notch
           child: SizedBox(
             width: _fabSize,
             height: _fabSize,
