@@ -135,11 +135,12 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       setState(() {
         _camera = controller;
         _initializing = false;
+        _mode = _LiveVisionMode.caption;
         _statusText = 'Sẵn sàng';
-        _overlayText = 'Đưa camera vào vật bạn muốn xem';
+        _overlayText = 'Đưa camera vào vùng bạn muốn mô tả';
       });
 
-      await _askInitialIntent();
+      await _announceAndStart();
     } catch (_) {
       if (!mounted) return;
       await _speak(
@@ -151,25 +152,28 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     }
   }
 
-  Future<void> _askInitialIntent() async {
-    _stopScanLoop(reason: 'Đang nghe yêu cầu');
-    final prompt =
-        'Bạn muốn mình mô tả gì? Bạn có thể nói mô tả cảnh vật, tìm đồ vật, hoặc đọc chữ.';
+  Future<void> _announceAndStart() async {
+    _stopScanLoop(reason: 'Đang hướng dẫn');
+    const prompt =
+        'Đã mở mô tả trực tiếp. Tự đọc đang bật. Bạn chỉ cần đưa camera vào cảnh vật. '
+        'Nếu muốn ra lệnh, hãy nhấn giữ ở bất kỳ đâu. '
+        'Nếu muốn nghe lại hướng dẫn, hãy chạm nhanh hai lần ở bất kỳ đâu. '
+        'Bạn có thể nói: về trang chủ, đọc báo, quét chữ, lịch sử, tác vụ hoặc cài đặt.';
     _lastPromptNorm = _norm(prompt);
 
     if (mounted) {
       setState(() {
-        _statusText = 'Đang nghe yêu cầu ban đầu';
+        _statusText = 'Đang hướng dẫn';
+        _mode = _LiveVisionMode.caption;
+        _overlayText = 'Đưa camera vào vùng bạn muốn mô tả';
       });
     }
 
     await _speak(prompt, title: 'Chụp nhanh');
     if (!mounted) return;
 
-    await Future.delayed(Duration(milliseconds: _settleMs(prompt)));
-    if (!mounted) return;
-
-    await _listenOnce(_handleInitialIntent);
+    _startScanLoop();
+    unawaited(_analyzeCurrentFrame(forceSpeak: false));
   }
 
   Future<void> _listenOnce(
@@ -207,31 +211,6 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       return true;
     }
     return false;
-  }
-
-  Future<void> _handleInitialIntent(String raw) async {
-    if (await _handleNavigationCommand(raw)) return;
-
-    final n = _norm(raw);
-    if (_looksLikeOcrIntent(n)) {
-      setState(() {
-        _mode = _LiveVisionMode.ocr;
-        _statusText = 'Sẵn sàng quét';
-        _overlayText = 'Đưa camera gần vùng có chữ';
-      });
-      await _speak('Đã chuyển sang đọc chữ trực tiếp.', title: _screenTitle);
-    } else {
-      setState(() {
-        _mode = _LiveVisionMode.caption;
-        _statusText = 'Sẵn sàng quét';
-        _overlayText = 'Di camera tới vùng bạn muốn mô tả';
-      });
-      await _speak('Đã chuyển sang mô tả trực tiếp.', title: _screenTitle);
-    }
-
-    if (!mounted) return;
-    _startScanLoop();
-    unawaited(_analyzeCurrentFrame(forceSpeak: false));
   }
 
   Future<bool> _handleNavigationCommand(String raw) async {
@@ -506,7 +485,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       setState(() {
         _mode = _LiveVisionMode.caption;
         _statusText = 'Đang quét trực tiếp';
-        _overlayText = 'Di camera tới vùng bạn muốn mô tả';
+        _overlayText = 'Đưa camera vào vùng bạn muốn mô tả';
       });
       _startScanLoop();
       unawaited(_analyzeCurrentFrame(forceSpeak: true));
@@ -620,13 +599,6 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
         n.contains('xem giup') ||
         n.contains('nhin giup') ||
         n.contains('tim do');
-  }
-
-  int _settleMs(String text) {
-    final value = 900 + (text.length * 28);
-    if (value < 1200) return 1200;
-    if (value > 4200) return 4200;
-    return value;
   }
 
   String _preview(String text) {
