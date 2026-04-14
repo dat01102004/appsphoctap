@@ -139,6 +139,8 @@ class _HomeScreenState extends State<HomeScreen> {
       await voice.stop();
       await tts.stop();
       await tts.speak(text);
+      // Wait a bit after speaking to let audio hardware clear and avoid mic catching echo
+      await Future.delayed(const Duration(milliseconds: 600));
     } finally {
       player.setPlaying(false);
 
@@ -176,10 +178,16 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     final voice = context.read<VoiceController>();
+    final tts = context.read<TtsService>();
     final epoch = ++_listenEpoch;
 
+    // Wait for TTS to finish if it's currently speaking
+    while (tts.isSpeaking.value && mounted && epoch == _listenEpoch) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
     await voice.stop();
-    await Future.delayed(const Duration(milliseconds: 350));
+    await Future.delayed(const Duration(milliseconds: 400));
 
     if (!mounted || epoch != _listenEpoch) return;
 
@@ -259,6 +267,8 @@ class _HomeScreenState extends State<HomeScreen> {
             'Hoặc giữ màn hình khoảng 2 giây để bật mic.',
         title: 'TalkSight',
       );
+      if (!mounted || _index != 0) return;
+      await Future.delayed(const Duration(milliseconds: 300));
     }
 
     if (!mounted || _index != 0) return;
@@ -272,6 +282,8 @@ class _HomeScreenState extends State<HomeScreen> {
       'Về trang chủ. Bạn có thể nói đọc báo, quét chữ, mô tả ảnh hoặc chụp nhanh.',
       title: 'TalkSight',
     );
+    if (!mounted) return;
+    await Future.delayed(const Duration(milliseconds: 300));
     await _resumeHomeVoice();
   }
 
@@ -504,7 +516,68 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _handleVoiceCommand(String raw) async {
     final news = context.read<NewsAssistantController>();
     final auth = context.read<AuthController>();
+    final tts = context.read<TtsService>();
     final text = _norm(raw);
+
+    // TTS Settings Commands
+    if (text.contains('toc do nhanh')) {
+      final newRate = (tts.rate + 0.1).clamp(0.1, 1.0);
+      await tts.setRate(newRate);
+      await _say('Đã tăng tốc độ đọc lên ${ (newRate * 10).toStringAsFixed(0) }.', title: 'Cài đặt');
+      return;
+    }
+    if (text.contains('toc do cham')) {
+      final newRate = (tts.rate - 0.1).clamp(0.1, 1.0);
+      await tts.setRate(newRate);
+      await _say('Đã giảm tốc độ đọc xuống ${ (newRate * 10).toStringAsFixed(0) }.', title: 'Cài đặt');
+      return;
+    }
+    if (text.contains('giong cao')) {
+      final newPitch = (tts.pitch + 0.2).clamp(0.5, 2.0);
+      await tts.setPitch(newPitch);
+      await _say('Đã chỉnh giọng cao hơn.', title: 'Cài đặt');
+      return;
+    }
+    if (text.contains('giong thap')) {
+      final newPitch = (tts.pitch - 0.2).clamp(0.5, 2.0);
+      await tts.setPitch(newPitch);
+      await _say('Đã chỉnh giọng thấp xuống.', title: 'Cài đặt');
+      return;
+    }
+    if (text.contains('giong nam') || text.contains('doi sang giong nam')) {
+      final voices = await tts.getVoices();
+      final maleVoice = voices.firstWhere(
+        (v) {
+          final name = v['name'].toString().toLowerCase();
+          final locale = v['locale'].toString().toLowerCase();
+          return locale.contains('vi') && (name.contains('male') || name.contains('sfg') || name.contains('trung'));
+        },
+        orElse: () => voices.firstWhere(
+          (v) => v['locale'].toString().toLowerCase().contains('vi'),
+          orElse: () => voices.first
+        )
+      );
+      await tts.setVoice(maleVoice);
+      await _say('Đã đổi sang giọng nam tiếng Việt.', title: 'Cài đặt');
+      return;
+    }
+    if (text.contains('giong nu') || text.contains('doi sang giong nu')) {
+      final voices = await tts.getVoices();
+      final femaleVoice = voices.firstWhere(
+        (v) {
+          final name = v['name'].toString().toLowerCase();
+          final locale = v['locale'].toString().toLowerCase();
+          return locale.contains('vi') && (name.contains('female') || name.contains('vic') || name.contains('linh'));
+        },
+        orElse: () => voices.firstWhere(
+          (v) => v['locale'].toString().toLowerCase().contains('vi'),
+          orElse: () => voices.first
+        )
+      );
+      await tts.setVoice(femaleVoice);
+      await _say('Đã đổi sang giọng nữ tiếng Việt.', title: 'Cài đặt');
+      return;
+    }
 
     final handledByNews = await news.handleUtterance(raw);
     if (handledByNews) return;

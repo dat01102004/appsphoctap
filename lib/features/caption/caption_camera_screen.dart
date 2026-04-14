@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/widgets/hold_to_listen_layer.dart';
 import '../voice/voice_controller.dart';
 
 class CaptionCameraScreen extends StatefulWidget {
@@ -95,7 +96,7 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
     _allowAutoShot = false;
 
     await _promptAndListen(
-      'Bạn muốn mình bấm nút chụp chưa? Khi sẵn sàng, bạn nói chụp.',
+      'Bạn muốn mình bấm nút chụp chưa? Khi sẵn sàng, bạn nói chụp. Hoặc nhấn giữ màn hình để ra lệnh.',
       _handleCaptureUtterance,
       settleMs: 1400,
     );
@@ -144,8 +145,10 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
   }
 
   bool _isEcho(String n) {
-    return n == 'ban muon minh bam nut chup chua khi san sang ban noi chup' ||
-        n == 'khi san sang ban noi chup';
+    final lower = n.toLowerCase();
+    return lower.contains('bam nut chụp chưa') ||
+        lower.contains('san sang ban noi chụp') ||
+        lower.contains('ra lenh');
   }
 
   Future<void> _handleCaptureUtterance(String raw) async {
@@ -233,6 +236,26 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
     }
   }
 
+  Future<void> _onHoldToListen() async {
+    final tts = context.read<TtsService>();
+    final voice = context.read<VoiceController>();
+
+    _allowAutoShot = false;
+    _listenEpoch++;
+
+    await tts.stop();
+    await voice.stop();
+
+    if (!mounted) return;
+
+    await voice.start(
+      onFinal: (text) async {
+        if (!mounted) return;
+        await _handleCaptureUtterance(text);
+      },
+    );
+  }
+
   String _norm(String s) {
     s = s.toLowerCase().trim();
 
@@ -257,79 +280,83 @@ class _CaptionCameraScreenState extends State<CaptionCameraScreen> {
       voice.isListening,
     );
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: const Text('Chụp ảnh mô tả'),
-        backgroundColor: AppColors.brandBrown,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            onPressed: _askReadyToCapture,
-            icon: Icon(
-              voice.isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-            ),
-          ),
-        ],
-      ),
-      body: _initializing
-          ? const Center(child: CircularProgressIndicator())
-          : Stack(
-        children: [
-          Positioned.fill(child: CameraPreview(_camera!)),
-          Positioned(
-            left: 16,
-            right: 16,
-            top: 18,
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(18),
+    return HoldToListenLayer(
+      holdDuration: const Duration(seconds: 2),
+      onTriggered: _onHoldToListen,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          title: const Text('Chụp ảnh mô tả'),
+          backgroundColor: AppColors.brandBrown,
+          foregroundColor: Colors.white,
+          actions: [
+            IconButton(
+              onPressed: _askReadyToCapture,
+              icon: Icon(
+                voice.isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
               ),
-              child: Text(
-                voice.isListening
-                    ? (voice.lastWords.trim().isEmpty
-                    ? 'Đang nghe lệnh chụp...'
-                    : 'Đang nghe: ${voice.lastWords}')
-                    : 'Nói “chụp” để mình tự bấm nút chụp.',
-                style: const TextStyle(
-                  color: Colors.white,
-                  height: 1.4,
+            ),
+          ],
+        ),
+        body: _initializing
+            ? const Center(child: CircularProgressIndicator())
+            : Stack(
+          children: [
+            Positioned.fill(child: CameraPreview(_camera!)),
+            Positioned(
+              left: 16,
+              right: 16,
+              top: 18,
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Text(
+                  voice.isListening
+                      ? (voice.lastWords.trim().isEmpty
+                      ? 'Đang nghe lệnh chụp...'
+                      : 'Đang nghe: ${voice.lastWords}')
+                      : 'Nói “chụp” hoặc giữ màn hình 2 giây để ra lệnh.',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    height: 1.4,
+                  ),
                 ),
               ),
             ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 28,
-            child: Center(
-              child: GestureDetector(
-                onTap: _capturing ? null : _takePicture,
-                child: Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.22),
-                    border: Border.all(color: Colors.white, width: 4),
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 64,
-                      height: 64,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 28,
+              child: Center(
+                child: GestureDetector(
+                  onTap: _capturing ? null : _takePicture,
+                  child: Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.22),
+                      border: Border.all(color: Colors.white, width: 4),
+                    ),
+                    child: Center(
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

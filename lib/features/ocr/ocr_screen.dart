@@ -99,7 +99,6 @@ class _OcrScreenState extends State<OcrScreen> {
     await _promptAndListen(
       'Bạn muốn chụp ảnh để quét hay chọn ảnh từ thư viện?',
       _handleSourceUtterance,
-      settleMs: 1450,
     );
   }
 
@@ -109,7 +108,6 @@ class _OcrScreenState extends State<OcrScreen> {
     await _promptAndListen(
       'Bạn muốn quét ảnh mới nhất hay ảnh thứ 2?',
       _handleGalleryChoiceUtterance,
-      settleMs: 1400,
     );
   }
 
@@ -119,15 +117,13 @@ class _OcrScreenState extends State<OcrScreen> {
     await _promptAndListen(
       'Bạn muốn sử dụng thêm tính năng gì khác? Bạn có thể nói: quét lại, mô tả ảnh, đọc báo, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
       _handleNextActionUtterance,
-      settleMs: 1500,
     );
   }
 
   Future<void> _promptAndListen(
       String prompt,
-      Future<void> Function(String raw) onFinal, {
-        int settleMs = 1200,
-      }) async {
+      Future<void> Function(String raw) onFinal,
+      ) async {
     final epoch = ++_listenEpoch;
 
     await _voice.stop();
@@ -135,7 +131,14 @@ class _OcrScreenState extends State<OcrScreen> {
 
     _lastPromptNorm = _norm(prompt);
     await _speakWithPlayer(prompt, title: 'OCR');
-    await Future.delayed(Duration(milliseconds: settleMs));
+
+    // Wait for TTS to finish if it's currently speaking
+    while (_tts.isSpeaking.value && mounted && epoch == _listenEpoch) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    // Extra breathing room to avoid mic catching echo
+    await Future.delayed(const Duration(milliseconds: 600));
 
     if (!mounted || epoch != _listenEpoch) return;
 
@@ -145,7 +148,7 @@ class _OcrScreenState extends State<OcrScreen> {
 
         final n = _norm(text);
         if (n.isEmpty || _isEchoFromTts(n)) {
-          await Future.delayed(const Duration(milliseconds: 350));
+          await Future.delayed(const Duration(milliseconds: 400));
           if (!mounted || epoch != _listenEpoch) return;
 
           if (_stage == _OcrStage.waitingSource) {
@@ -201,7 +204,7 @@ class _OcrScreenState extends State<OcrScreen> {
       'Mình chưa hiểu. Bạn có thể nói chụp ảnh hoặc chọn ảnh từ thư viện.',
       title: 'OCR',
     );
-    await Future.delayed(const Duration(milliseconds: 400));
+    await Future.delayed(const Duration(milliseconds: 600));
     await _askSource();
   }
 
@@ -230,7 +233,7 @@ class _OcrScreenState extends State<OcrScreen> {
       'Mình chưa hiểu. Bạn có thể nói ảnh mới nhất hoặc ảnh thứ 2.',
       title: 'OCR',
     );
-    await Future.delayed(const Duration(milliseconds: 400));
+    await Future.delayed(const Duration(milliseconds: 600));
     await _askGalleryChoice();
   }
 
@@ -309,7 +312,7 @@ class _OcrScreenState extends State<OcrScreen> {
       'Mình chưa hiểu. Bạn có thể nói quét lại, mô tả ảnh, đọc báo, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
       title: 'OCR',
     );
-    await Future.delayed(const Duration(milliseconds: 450));
+    await Future.delayed(const Duration(milliseconds: 600));
     await _askNextAction();
   }
 
@@ -333,7 +336,7 @@ class _OcrScreenState extends State<OcrScreen> {
     );
 
     if (!mounted || path == null || path.trim().isEmpty) {
-      await Future.delayed(const Duration(milliseconds: 250));
+      await Future.delayed(const Duration(milliseconds: 400));
       await _askSource();
       return;
     }
@@ -363,7 +366,7 @@ class _OcrScreenState extends State<OcrScreen> {
     try {
       final ok = await _ensureGalleryPermission();
       if (!ok) {
-        await Future.delayed(const Duration(milliseconds: 350));
+        await Future.delayed(const Duration(milliseconds: 500));
         await _askSource();
         return;
       }
@@ -374,7 +377,7 @@ class _OcrScreenState extends State<OcrScreen> {
       );
 
       if (file == null || file.path.trim().isEmpty) {
-        await Future.delayed(const Duration(milliseconds: 250));
+        await Future.delayed(const Duration(milliseconds: 400));
         await _askSource();
         return;
       }
@@ -385,7 +388,7 @@ class _OcrScreenState extends State<OcrScreen> {
         'Có lỗi khi chọn ảnh từ thư viện.',
         title: 'OCR',
       );
-      await Future.delayed(const Duration(milliseconds: 350));
+      await Future.delayed(const Duration(milliseconds: 500));
       await _askSource();
     }
   }
@@ -441,7 +444,7 @@ class _OcrScreenState extends State<OcrScreen> {
     try {
       final ok = await _ensureGalleryPermission();
       if (!ok) {
-        await Future.delayed(const Duration(milliseconds: 350));
+        await Future.delayed(const Duration(milliseconds: 500));
         await _askSource();
         return;
       }
@@ -456,7 +459,7 @@ class _OcrScreenState extends State<OcrScreen> {
           'Mình chưa thấy ảnh nào trong thư viện.',
           title: 'OCR',
         );
-        await Future.delayed(const Duration(milliseconds: 350));
+        await Future.delayed(const Duration(milliseconds: 500));
         await _askSource();
         return;
       }
@@ -508,7 +511,7 @@ class _OcrScreenState extends State<OcrScreen> {
               : 'Mình chưa thấy đủ ảnh chụp từ camera để lấy ảnh thứ 2.',
           title: 'OCR',
         );
-        await Future.delayed(const Duration(milliseconds: 350));
+        await Future.delayed(const Duration(milliseconds: 500));
         await _askGalleryChoice();
         return;
       }
@@ -519,7 +522,7 @@ class _OcrScreenState extends State<OcrScreen> {
           'Mình chưa mở được ảnh chụp từ camera.',
           title: 'OCR',
         );
-        await Future.delayed(const Duration(milliseconds: 350));
+        await Future.delayed(const Duration(milliseconds: 500));
         await _askGalleryChoice();
         return;
       }
@@ -530,7 +533,7 @@ class _OcrScreenState extends State<OcrScreen> {
         'Có lỗi khi lấy ảnh từ thư viện.',
         title: 'OCR',
       );
-      await Future.delayed(const Duration(milliseconds: 350));
+      await Future.delayed(const Duration(milliseconds: 500));
       await _askGalleryChoice();
     }
   }
@@ -546,6 +549,8 @@ class _OcrScreenState extends State<OcrScreen> {
         'Đang quét chữ, bạn chờ một chút nhé.',
         title: 'OCR',
       );
+      // Wait for "processing" message
+      await Future.delayed(const Duration(milliseconds: 1500));
 
       await _ocr.runOcr(path, speakResult: false);
 
@@ -555,13 +560,18 @@ class _OcrScreenState extends State<OcrScreen> {
 
       await _reloadHistoryIfNeeded(_ocr.historyId);
       await _speakWithPlayer(result, title: 'Kết quả OCR');
+      // Wait for result to finish
+      while (_tts.isSpeaking.value && mounted) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      await Future.delayed(const Duration(milliseconds: 500));
       await _askNextAction();
     } catch (_) {
       await _speakWithPlayer(
         'Có lỗi khi quét chữ. Bạn thử lại nhé.',
         title: 'OCR',
       );
-      await Future.delayed(const Duration(milliseconds: 400));
+      await Future.delayed(const Duration(milliseconds: 600));
       await _askSource();
     }
   }

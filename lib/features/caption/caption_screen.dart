@@ -99,7 +99,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
     await _promptAndListen(
       'Bạn muốn chụp ảnh để mô tả hay chọn ảnh từ thư viện?',
       _handleSourceUtterance,
-      settleMs: 1450,
     );
   }
 
@@ -109,7 +108,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
     await _promptAndListen(
       'Bạn muốn dùng ảnh mới nhất hay ảnh thứ 2?',
       _handleGalleryChoiceUtterance,
-      settleMs: 1400,
     );
   }
 
@@ -119,15 +117,13 @@ class _CaptionScreenState extends State<CaptionScreen> {
     await _promptAndListen(
       'Bạn muốn sử dụng thêm tính năng gì khác? Bạn có thể nói: mô tả lại, quét chữ, đọc báo, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
       _handleNextActionUtterance,
-      settleMs: 1500,
     );
   }
 
   Future<void> _promptAndListen(
       String prompt,
-      Future<void> Function(String raw) onFinal, {
-        int settleMs = 1200,
-      }) async {
+      Future<void> Function(String raw) onFinal,
+      ) async {
     final epoch = ++_listenEpoch;
 
     await _voice.stop();
@@ -135,7 +131,14 @@ class _CaptionScreenState extends State<CaptionScreen> {
 
     _lastPromptNorm = _norm(prompt);
     await _speakWithPlayer(prompt, title: 'Mô tả ảnh');
-    await Future.delayed(Duration(milliseconds: settleMs));
+
+    // Wait for TTS to finish if it's currently speaking
+    while (_tts.isSpeaking.value && mounted && epoch == _listenEpoch) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
+    // Extra breathing room to avoid mic catching echo
+    await Future.delayed(const Duration(milliseconds: 600));
 
     if (!mounted || epoch != _listenEpoch) return;
 
@@ -145,7 +148,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
 
         final n = _norm(text);
         if (n.isEmpty || _isEchoFromTts(n)) {
-          await Future.delayed(const Duration(milliseconds: 350));
+          await Future.delayed(const Duration(milliseconds: 400));
           if (!mounted || epoch != _listenEpoch) return;
 
           if (_stage == _CaptionStage.waitingSource) {
@@ -201,7 +204,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       'Mình chưa hiểu. Bạn có thể nói chụp ảnh hoặc chọn ảnh từ thư viện.',
       title: 'Mô tả ảnh',
     );
-    await Future.delayed(const Duration(milliseconds: 400));
+    await Future.delayed(const Duration(milliseconds: 600));
     await _askSource();
   }
 
@@ -230,7 +233,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       'Mình chưa hiểu. Bạn có thể nói ảnh mới nhất hoặc ảnh thứ 2.',
       title: 'Mô tả ảnh',
     );
-    await Future.delayed(const Duration(milliseconds: 400));
+    await Future.delayed(const Duration(milliseconds: 600));
     await _askGalleryChoice();
   }
 
@@ -309,7 +312,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       'Mình chưa hiểu. Bạn có thể nói mô tả lại, quét chữ, đọc báo, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
       title: 'Mô tả ảnh',
     );
-    await Future.delayed(const Duration(milliseconds: 450));
+    await Future.delayed(const Duration(milliseconds: 600));
     await _askNextAction();
   }
 
@@ -333,7 +336,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
     );
 
     if (!mounted || path == null || path.trim().isEmpty) {
-      await Future.delayed(const Duration(milliseconds: 250));
+      await Future.delayed(const Duration(milliseconds: 400));
       await _askSource();
       return;
     }
@@ -363,7 +366,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
     try {
       final ok = await _ensureGalleryPermission();
       if (!ok) {
-        await Future.delayed(const Duration(milliseconds: 350));
+        await Future.delayed(const Duration(milliseconds: 500));
         await _askSource();
         return;
       }
@@ -374,7 +377,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       );
 
       if (file == null || file.path.trim().isEmpty) {
-        await Future.delayed(const Duration(milliseconds: 250));
+        await Future.delayed(const Duration(milliseconds: 400));
         await _askSource();
         return;
       }
@@ -385,7 +388,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
         'Có lỗi khi chọn ảnh từ thư viện.',
         title: 'Mô tả ảnh',
       );
-      await Future.delayed(const Duration(milliseconds: 350));
+      await Future.delayed(const Duration(milliseconds: 500));
       await _askSource();
     }
   }
@@ -441,7 +444,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
     try {
       final ok = await _ensureGalleryPermission();
       if (!ok) {
-        await Future.delayed(const Duration(milliseconds: 350));
+        await Future.delayed(const Duration(milliseconds: 500));
         await _askSource();
         return;
       }
@@ -456,7 +459,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
           'Mình chưa thấy ảnh nào trong thư viện.',
           title: 'Mô tả ảnh',
         );
-        await Future.delayed(const Duration(milliseconds: 350));
+        await Future.delayed(const Duration(milliseconds: 500));
         await _askSource();
         return;
       }
@@ -508,7 +511,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
               : 'Mình chưa thấy đủ ảnh chụp từ camera để lấy ảnh thứ 2.',
           title: 'Mô tả ảnh',
         );
-        await Future.delayed(const Duration(milliseconds: 350));
+        await Future.delayed(const Duration(milliseconds: 500));
         await _askGalleryChoice();
         return;
       }
@@ -519,7 +522,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
           'Mình chưa mở được ảnh chụp từ camera.',
           title: 'Mô tả ảnh',
         );
-        await Future.delayed(const Duration(milliseconds: 350));
+        await Future.delayed(const Duration(milliseconds: 500));
         await _askGalleryChoice();
         return;
       }
@@ -530,7 +533,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
         'Có lỗi khi lấy ảnh từ thư viện.',
         title: 'Mô tả ảnh',
       );
-      await Future.delayed(const Duration(milliseconds: 350));
+      await Future.delayed(const Duration(milliseconds: 500));
       await _askGalleryChoice();
     }
   }
@@ -546,6 +549,8 @@ class _CaptionScreenState extends State<CaptionScreen> {
         'Đang mô tả ảnh, bạn chờ một chút nhé.',
         title: 'Mô tả ảnh',
       );
+      // Wait for the "processing" message to finish
+      await Future.delayed(const Duration(milliseconds: 1500));
 
       await _caption.runCaption(path, speakResult: false);
 
@@ -555,13 +560,18 @@ class _CaptionScreenState extends State<CaptionScreen> {
 
       await _reloadHistoryIfNeeded(_caption.historyId);
       await _speakWithPlayer(result, title: 'Kết quả mô tả');
+      // Wait for result to finish speaking
+      while (_tts.isSpeaking.value && mounted) {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      await Future.delayed(const Duration(milliseconds: 500));
       await _askNextAction();
     } catch (_) {
       await _speakWithPlayer(
         'Có lỗi khi mô tả ảnh. Bạn thử lại nhé.',
         title: 'Mô tả ảnh',
       );
-      await Future.delayed(const Duration(milliseconds: 400));
+      await Future.delayed(const Duration(milliseconds: 600));
       await _askSource();
     }
   }

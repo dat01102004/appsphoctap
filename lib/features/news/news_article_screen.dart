@@ -3,8 +3,10 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/widgets/hold_to_listen_layer.dart';
 import '../player/player_controller.dart';
 import '../player/player_sliding_panel.dart';
+import '../voice/voice_controller.dart';
 import 'news_article_payload.dart';
 
 enum NewsArticleExitAction {
@@ -147,10 +149,39 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
 
   Future<void> _onMicPressed() async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đọc xong bài, app sẽ hỏi bạn muốn làm gì tiếp theo.'),
-      ),
+    
+    final voice = context.read<VoiceController>();
+    if (voice.isListening) {
+      await voice.stop();
+    } else {
+      await _onHoldToListen();
+    }
+  }
+
+  Future<void> _onHoldToListen() async {
+    final voice = context.read<VoiceController>();
+    final tts = context.read<TtsService>();
+
+    await tts.stop();
+    await voice.stop();
+
+    if (!mounted) return;
+
+    await voice.start(
+      onFinal: (text) async {
+        if (!mounted) return;
+        final raw = text.toLowerCase().trim();
+        
+        if (raw.contains('dung') || raw.contains('ngung') || raw.contains('thoi')) {
+          await _stop();
+        } else if (raw.contains('tiep') || raw.contains('phat') || raw.contains('nghe')) {
+          await _play();
+        } else if (raw.contains('thoat') || raw.contains('dong') || raw.contains('ve')) {
+          Navigator.pop(context);
+        } else {
+          // Mặc định nếu không hiểu lệnh thì coi như muốn đóng/thoát hoặc giữ nguyên
+        }
+      },
     );
   }
 
@@ -167,100 +198,104 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
         widget.article.published!,
     ].join(' • ');
 
-    return WillPopScope(
-      onWillPop: _onWillPop,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Bài báo'),
-        ),
-        body: Stack(
-          children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 140),
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _safeTitle,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            height: 1.3,
-                          ),
-                        ),
-                        if (sourceLine.isNotEmpty) ...[
-                          const SizedBox(height: 10),
+    return HoldToListenLayer(
+      holdDuration: const Duration(seconds: 2),
+      onTriggered: _onHoldToListen,
+      child: WillPopScope(
+        onWillPop: _onWillPop,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Bài báo'),
+          ),
+          body: Stack(
+            children: [
+              ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 140),
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            sourceLine,
+                            _safeTitle,
                             style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.black54,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              height: 1.3,
                             ),
                           ),
+                          if (sourceLine.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              sourceLine,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Tóm tắt nội dung',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Tóm tắt nội dung',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        ValueListenableBuilder<TtsProgress?>(
-                          valueListenable: context.read<TtsService>().progress,
-                          builder: (_, progress, __) {
-                            return _HighlightedText(
-                              text: _safeSummary,
-                              progress: progress,
-                            );
-                          },
-                        ),
-                      ],
+                          const SizedBox(height: 12),
+                          ValueListenableBuilder<TtsProgress?>(
+                            valueListenable: context.read<TtsService>().progress,
+                            builder: (_, progress, __) {
+                              return _HighlightedText(
+                                text: _safeSummary,
+                                progress: progress,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.brandBrown,
-                      foregroundColor: Colors.white,
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.brandBrown,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: _play,
+                      icon: const Icon(Icons.volume_up_rounded),
+                      label: const Text('Đọc lại tóm tắt'),
                     ),
-                    onPressed: _play,
-                    icon: const Icon(Icons.volume_up_rounded),
-                    label: const Text('Đọc lại tóm tắt'),
                   ),
-                ),
-              ],
-            ),
-            Positioned.fill(
-              bottom: _playerBottomOffset,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: PlayerSlidingPanel(
-                  onPlayPause: _togglePlayPause,
-                  onStop: _stop,
-                  onMic: _onMicPressed,
+                ],
+              ),
+              Positioned.fill(
+                bottom: _playerBottomOffset,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: PlayerSlidingPanel(
+                    onPlayPause: _togglePlayPause,
+                    onStop: _stop,
+                    onMic: _onMicPressed,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
