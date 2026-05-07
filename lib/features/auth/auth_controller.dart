@@ -48,11 +48,21 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> refreshMe() async {
+    if (!loggedIn) return;
+    final me = await api.me();
+    email = me.email;
+    fullName = me.fullName;
+    phone = me.phone;
+    notifyListeners();
+  }
+
   Future<void> login(String email, String password) async {
     final res = await api.login(email, password);
     await storage.saveToken(res.accessToken);
 
     final me = await api.me();
+
     loggedIn = true;
     this.email = me.email;
     fullName = me.fullName;
@@ -78,6 +88,7 @@ class AuthController extends ChangeNotifier {
     await storage.saveToken(res.accessToken);
 
     final me = await api.me();
+
     loggedIn = true;
     this.email = me.email;
     this.fullName = me.fullName;
@@ -85,6 +96,26 @@ class AuthController extends ChangeNotifier {
 
     notifyListeners();
     await tts.speak("Đăng ký thành công.");
+  }
+
+  Future<void> updateProfile({
+    required String fullName,
+    required String email,
+    required String phone,
+  }) async {
+    final me = await api.updateMe(
+      fullName: fullName,
+      email: email,
+      phone: phone,
+    );
+
+    loggedIn = true;
+    this.email = me.email;
+    this.fullName = me.fullName;
+    this.phone = me.phone;
+
+    notifyListeners();
+    await tts.speak("Đã cập nhật thông tin người dùng.");
   }
 
   Future<void> logout() async {

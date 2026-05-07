@@ -1,21 +1,47 @@
 class OcrResponse {
   final String text;
   final int? historyId;
-  OcrResponse({required this.text, this.historyId});
+  final bool deduplicated;
+  final bool savedToHistory;
+  final String? matchType;
 
-  factory OcrResponse.fromJson(Map<String, dynamic> json) => OcrResponse(
-    text: json["text"] ?? "",
+  OcrResponse({
+    required this.text,
+    this.historyId,
+    this.deduplicated = false,
+    this.savedToHistory = false,
+    this.matchType,
+  });
+
+  factory OcrResponse.fromJson(Map json) => OcrResponse(
+    text: (json["text"] ?? "").toString(),
     historyId: json["history_id"],
+    deduplicated: json["deduplicated"] == true,
+    savedToHistory: json["saved_to_history"] == true,
+    matchType: json["match_type"]?.toString(),
   );
 }
 
 class CaptionResponse {
   final String caption;
   final int? historyId;
-  CaptionResponse({required this.caption, this.historyId});
+  final bool deduplicated;
+  final bool savedToHistory;
+  final String? matchType;
 
-  factory CaptionResponse.fromJson(Map<String, dynamic> json) => CaptionResponse(
-    caption: json["caption"] ?? "",
+  CaptionResponse({
+    required this.caption,
+    this.historyId,
+    this.deduplicated = false,
+    this.savedToHistory = false,
+    this.matchType,
+  });
+
+  factory CaptionResponse.fromJson(Map json) => CaptionResponse(
+    caption: (json["caption"] ?? "").toString(),
     historyId: json["history_id"],
+    deduplicated: json["deduplicated"] == true,
+    savedToHistory: json["saved_to_history"] == true,
+    matchType: json["match_type"]?.toString(),
   );
 }

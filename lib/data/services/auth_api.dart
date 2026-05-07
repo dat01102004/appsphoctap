@@ -14,6 +14,7 @@ class AuthApi {
         "password": password,
       },
     );
+
     return AuthTokenResponse.fromJson(res.data);
   }
 
@@ -32,11 +33,28 @@ class AuthApi {
         "password": password,
       },
     );
+
     return AuthTokenResponse.fromJson(res.data);
   }
 
   Future<MeResponse> me() async {
     final res = await client.dio.get("/me");
+    return MeResponse.fromJson(res.data);
+  }
+
+  Future<MeResponse> updateMe({
+    required String fullName,
+    required String email,
+    required String phone,
+  }) async {
+    final res = await client.dio.put(
+      "/me",
+      data: {
+        "full_name": fullName,
+        "email": email,
+        "phone": phone,
+      },
+    );
     return MeResponse.fromJson(res.data);
   }
 }

@@ -34,7 +34,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   static const double _fabSize = 66;
-  static const double _playerBottomOffset = 88;
+  static const double _playerBottomOffset = 74;
 
   int _index = 0;
   bool _greeted = false;
@@ -44,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _lastPromptNorm = '';
 
   int _listenEpoch = 0;
+  int _homeResumePromptCount = 0;
 
   VoiceController? _voiceRef;
   bool _voiceListenerAttached = false;
@@ -68,8 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _say(
         'Xin chào bạn! Hôm nay bạn muốn sử dụng tính năng gì? '
-            'Bạn có thể nói: quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh, đăng nhập hoặc đăng ký. '
-            'Hoặc giữ màn hình khoảng 2 giây để bật mic nghe lệnh.',
+            'Bạn có thể nói: quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh.',
         title: 'TalkSight',
       );
       await _startVoiceOnce();
@@ -79,9 +79,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _listenEpoch++;
+
     if (_voiceListenerAttached && _voiceRef != null) {
       _voiceRef!.removeListener(_syncVoiceToPlayer);
     }
+
     context.read<VoiceController>().stop();
     context.read<TtsService>().stop();
     super.dispose();
@@ -103,8 +105,9 @@ class _HomeScreenState extends State<HomeScreen> {
       player.setNow(
         _lastSpokenTitle,
         text,
-        newDetails:
-        voice.lastWords.trim().isEmpty ? 'Đang nghe...' : voice.lastWords,
+        newDetails: voice.lastWords.trim().isEmpty
+            ? 'Đang nghe...'
+            : voice.lastWords,
       );
       return;
     }
@@ -139,57 +142,24 @@ class _HomeScreenState extends State<HomeScreen> {
       await voice.stop();
       await tts.stop();
       await tts.speak(text);
-      // Wait a bit after speaking to let audio hardware clear and avoid mic catching echo
-      await Future.delayed(const Duration(milliseconds: 600));
     } finally {
       player.setPlaying(false);
-
       if (!voice.isListening) {
         player.setNow(_lastSpokenTitle, 'Sẵn sàng');
       }
     }
   }
 
-  int _settleMs(String text) {
-    final value = 900 + (text.length * 28);
-    if (value < 1200) return 1200;
-    if (value > 4200) return 4200;
-    return value;
-  }
-
-  Future<void> _announceAfterReturn(
-      String text, {
-        String title = 'TalkSight',
-        bool resumeVoiceIfHome = true,
-      }) async {
-    await _say(text, title: title);
-
-    if (!mounted) return;
-
-    await Future.delayed(Duration(milliseconds: _settleMs(text)));
-
-    if (!mounted) return;
-    if (resumeVoiceIfHome && _index == 0) {
-      await _startVoiceOnce();
-    }
-  }
-
   Future<void> _startVoiceOnce() async {
-    if (!mounted) return;
+    if (!mounted || _index != 0) return;
 
     final voice = context.read<VoiceController>();
-    final tts = context.read<TtsService>();
     final epoch = ++_listenEpoch;
 
-    // Wait for TTS to finish if it's currently speaking
-    while (tts.isSpeaking.value && mounted && epoch == _listenEpoch) {
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-
     await voice.stop();
-    await Future.delayed(const Duration(milliseconds: 400));
+    await Future.delayed(const Duration(milliseconds: 350));
 
-    if (!mounted || epoch != _listenEpoch) return;
+    if (!mounted || epoch != _listenEpoch || _index != 0) return;
 
     await voice.start(
       onFinal: (text) async {
@@ -203,13 +173,14 @@ class _HomeScreenState extends State<HomeScreen> {
             'Mình chưa nghe rõ. Bạn nói lại giúp mình nhé.',
             title: 'TalkSight',
           );
-          if (!mounted || epoch != _listenEpoch) return;
+
+          if (!mounted || epoch != _listenEpoch || _index != 0) return;
           await _startVoiceOnce();
           return;
         }
 
         if (_isPromptEcho(normalized)) {
-          if (!mounted || epoch != _listenEpoch) return;
+          if (!mounted || epoch != _listenEpoch || _index != 0) return;
           await _startVoiceOnce();
           return;
         }
@@ -249,6 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (voice.isListening) return;
 
     await tts.stop();
+
     player.setNow(
       _lastSpokenTitle,
       'Đang nghe...',
@@ -258,41 +230,66 @@ class _HomeScreenState extends State<HomeScreen> {
     await _startVoiceOnce();
   }
 
+  String _buildHomeResumePrompt() {
+    if (_homeResumePromptCount == 0) {
+      return 'Bạn đang ở trang chủ. Bạn muốn làm gì tiếp theo? '
+          'Bạn có thể nói quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh, đăng nhập hoặc đăng ký.';
+    }
+
+    return 'Trang chủ đây rồi. Bạn muốn làm gì tiếp? '
+        'Nói quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ hoặc chụp nhanh.';
+  }
+
   Future<void> _resumeHomeVoice({bool speakPrompt = false}) async {
     if (!mounted || _index != 0) return;
 
     if (speakPrompt) {
+      final prompt = _buildHomeResumePrompt();
+      _homeResumePromptCount++;
+
       await _say(
-        'Bạn muốn làm gì tiếp theo? Bạn có thể nói quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh, đăng nhập hoặc đăng ký. '
-            'Hoặc giữ màn hình khoảng 2 giây để bật mic.',
+        prompt,
         title: 'TalkSight',
       );
+
       if (!mounted || _index != 0) return;
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 250));
     }
 
     if (!mounted || _index != 0) return;
+
+    final player = context.read<PlayerController>();
+    player.setNow(
+      'TalkSight',
+      'Đang nghe...',
+      newDetails: 'Đang nghe lệnh ở trang chủ',
+    );
+
     await _startVoiceOnce();
   }
 
   Future<void> _goHome() async {
     if (!mounted) return;
+
+    _listenEpoch++;
+    await context.read<VoiceController>().stop();
+    await context.read<TtsService>().stop();
+
     setState(() => _index = 0);
-    await _say(
-      'Về trang chủ. Bạn có thể nói đọc báo, quét chữ, mô tả ảnh hoặc chụp nhanh.',
-      title: 'TalkSight',
-    );
+
     if (!mounted) return;
-    await Future.delayed(const Duration(milliseconds: 300));
-    await _resumeHomeVoice();
+    await _resumeHomeVoice(speakPrompt: true);
   }
 
   Future<void> _goHistory() async {
     if (!mounted) return;
+
     _listenEpoch++;
     await context.read<VoiceController>().stop();
     await context.read<TtsService>().stop();
+
     setState(() => _index = 1);
+
     await _say(
       'Đã mở lịch sử. Tại đây bạn có thể xem lại kết quả quét chữ, mô tả ảnh và các bài báo đã đọc.',
       title: 'Lịch sử',
@@ -301,10 +298,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _goTasks() async {
     if (!mounted) return;
+
     _listenEpoch++;
     await context.read<VoiceController>().stop();
     await context.read<TtsService>().stop();
+
     setState(() => _index = 2);
+
     await _say(
       'Đã mở tác vụ. Đây là nơi bạn quản lý danh sách các việc cần làm và nhắc nhở cá nhân.',
       title: 'Tác vụ',
@@ -313,10 +313,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _goSettings() async {
     if (!mounted) return;
+
     _listenEpoch++;
     await context.read<VoiceController>().stop();
     await context.read<TtsService>().stop();
+
     setState(() => _index = 3);
+
     await _say(
       'Đã mở cài đặt. Bạn có thể điều chỉnh giọng đọc, tốc độ nói và các cấu hình hệ thống tại đây.',
       title: 'Cài đặt',
@@ -336,6 +339,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!mounted) return;
+
     if (_index == 0 && resumeHomeVoiceIfReturn) {
       await _resumeHomeVoice(speakPrompt: true);
     }
@@ -354,6 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!mounted) return;
+
     if (_index == 0 && resumeHomeVoiceIfReturn) {
       await _resumeHomeVoice(speakPrompt: true);
     }
@@ -383,6 +388,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!mounted) return;
+
     if (_index == 0) {
       await _resumeHomeVoice(speakPrompt: true);
     }
@@ -410,6 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!mounted) return;
+
     if (_index == 0) {
       await _resumeHomeVoice(speakPrompt: true);
     }
@@ -437,6 +444,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!mounted) return;
+
     if (_index == 0) {
       await _resumeHomeVoice(speakPrompt: true);
     }
@@ -455,6 +463,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (!mounted) return;
+
     if (_index == 0) {
       await _resumeHomeVoice(speakPrompt: true);
     }
@@ -467,23 +476,18 @@ class _HomeScreenState extends State<HomeScreen> {
       case LiveVisionAction.news:
         await _openNewsScreen();
         return;
-
       case LiveVisionAction.ocr:
         await _openOcrScreen();
         return;
-
       case LiveVisionAction.history:
         await _goHistory();
         return;
-
       case LiveVisionAction.tasks:
         await _goTasks();
         return;
-
       case LiveVisionAction.settings:
         await _goSettings();
         return;
-
       case LiveVisionAction.home:
       default:
         await _goHome();
@@ -519,61 +523,79 @@ class _HomeScreenState extends State<HomeScreen> {
     final tts = context.read<TtsService>();
     final text = _norm(raw);
 
-    // TTS Settings Commands
     if (text.contains('toc do nhanh')) {
       final newRate = (tts.rate + 0.1).clamp(0.1, 1.0);
       await tts.setRate(newRate);
-      await _say('Đã tăng tốc độ đọc lên ${ (newRate * 10).toStringAsFixed(0) }.', title: 'Cài đặt');
+      await _say('Đã chỉnh tốc độ đọc nhanh hơn.', title: 'Cài đặt');
       return;
     }
+
     if (text.contains('toc do cham')) {
       final newRate = (tts.rate - 0.1).clamp(0.1, 1.0);
       await tts.setRate(newRate);
-      await _say('Đã giảm tốc độ đọc xuống ${ (newRate * 10).toStringAsFixed(0) }.', title: 'Cài đặt');
+      await _say('Đã chỉnh tốc độ đọc chậm hơn.', title: 'Cài đặt');
       return;
     }
+
     if (text.contains('giong cao')) {
       final newPitch = (tts.pitch + 0.2).clamp(0.5, 2.0);
       await tts.setPitch(newPitch);
       await _say('Đã chỉnh giọng cao hơn.', title: 'Cài đặt');
       return;
     }
+
     if (text.contains('giong thap')) {
       final newPitch = (tts.pitch - 0.2).clamp(0.5, 2.0);
       await tts.setPitch(newPitch);
       await _say('Đã chỉnh giọng thấp xuống.', title: 'Cài đặt');
       return;
     }
+
     if (text.contains('giong nam') || text.contains('doi sang giong nam')) {
       final voices = await tts.getVoices();
       final maleVoice = voices.firstWhere(
-        (v) {
+            (v) {
           final name = v['name'].toString().toLowerCase();
           final locale = v['locale'].toString().toLowerCase();
-          return locale.contains('vi') && (name.contains('male') || name.contains('sfg') || name.contains('trung'));
+          return locale.contains('vi') &&
+              (name.contains('male') ||
+                  name.contains('man') ||
+                  name.contains('sfg') ||
+                  name.contains('vid') ||
+                  name.contains('vie') ||
+                  name.contains('trung'));
         },
         orElse: () => voices.firstWhere(
-          (v) => v['locale'].toString().toLowerCase().contains('vi'),
-          orElse: () => voices.first
-        )
+              (v) => v['locale'].toString().toLowerCase().contains('vi'),
+          orElse: () => voices.first,
+        ),
       );
+
       await tts.setVoice(maleVoice);
       await _say('Đã đổi sang giọng nam tiếng Việt.', title: 'Cài đặt');
       return;
     }
+
     if (text.contains('giong nu') || text.contains('doi sang giong nu')) {
       final voices = await tts.getVoices();
       final femaleVoice = voices.firstWhere(
-        (v) {
+            (v) {
           final name = v['name'].toString().toLowerCase();
           final locale = v['locale'].toString().toLowerCase();
-          return locale.contains('vi') && (name.contains('female') || name.contains('vic') || name.contains('linh'));
+          return locale.contains('vi') &&
+              (name.contains('female') ||
+                  name.contains('woman') ||
+                  name.contains('nu') ||
+                  name.contains('gft') ||
+                  name.contains('gan') ||
+                  name.contains('vic'));
         },
         orElse: () => voices.firstWhere(
-          (v) => v['locale'].toString().toLowerCase().contains('vi'),
-          orElse: () => voices.first
-        )
+              (v) => v['locale'].toString().toLowerCase().contains('vi'),
+          orElse: () => voices.first,
+        ),
       );
+
       await tts.setVoice(femaleVoice);
       await _say('Đã đổi sang giọng nữ tiếng Việt.', title: 'Cài đặt');
       return;
@@ -594,11 +616,14 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       await auth.logout();
+
       if (!mounted) return;
+
       await _say(
         'Bạn đã đăng xuất. Hiện tại bạn đang ở chế độ khách.',
         title: 'Tài khoản',
       );
+
       if (!mounted) return;
       await _resumeHomeVoice(speakPrompt: true);
       return;
@@ -610,12 +635,14 @@ class _HomeScreenState extends State<HomeScreen> {
           'Bạn đang đăng nhập bằng ${auth.displayName}. Nếu muốn tạo tài khoản khác, bạn có thể đăng xuất trước.',
           title: 'Đăng ký',
         );
+
         if (!mounted) return;
         await _resumeHomeVoice(speakPrompt: true);
         return;
       }
 
       await _say('Ok, mình mở màn hình đăng ký tài khoản.', title: 'Đăng ký');
+
       if (!mounted) return;
       await _openRegisterScreen();
       return;
@@ -627,12 +654,14 @@ class _HomeScreenState extends State<HomeScreen> {
           'Bạn đã đăng nhập rồi. Tài khoản hiện tại là ${auth.displayName}.',
           title: 'Đăng nhập',
         );
+
         if (!mounted) return;
         await _resumeHomeVoice(speakPrompt: true);
         return;
       }
 
       await _say('Ok, mình mở màn hình đăng nhập tài khoản.', title: 'Đăng nhập');
+
       if (!mounted) return;
       await _openLoginScreen();
       return;

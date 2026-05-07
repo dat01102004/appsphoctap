@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/tts/tts_service.dart';
 import '../../../core/widgets/hold_to_listen_layer.dart';
 import '../../auth/auth_controller.dart';
+import '../../auth/edit_profile_screen.dart';
 import '../../auth/login_screen.dart';
 import '../../auth/register_screen.dart';
 import '../../voice/voice_controller.dart';
@@ -20,8 +21,7 @@ class _SettingsTabState extends State<SettingsTab> {
   int _listenEpoch = 0;
   String _lastPromptNorm = '';
   String _lastAnnounceMode = '';
-
-  List<Map<dynamic, dynamic>> _voices = const [];
+  List<Map<String, dynamic>> _voices = const [];
   bool _loadingVoices = false;
 
   @override
@@ -30,7 +30,7 @@ class _SettingsTabState extends State<SettingsTab> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadVoices();
       if (!mounted) return;
-      _announceByState();
+      await _announceByState();
     });
   }
 
@@ -44,9 +44,11 @@ class _SettingsTabState extends State<SettingsTab> {
   Future<void> _loadVoices() async {
     if (_loadingVoices) return;
     _loadingVoices = true;
+
     try {
       final tts = context.read<TtsService>();
       final raw = await tts.getVoices();
+
       final filtered = raw.where((v) {
         final locale = (v['locale'] ?? '').toString().toLowerCase();
         final name = (v['name'] ?? '').toString().toLowerCase();
@@ -56,8 +58,11 @@ class _SettingsTabState extends State<SettingsTab> {
             name.contains('vietnam');
       }).toList();
 
+      if (!mounted) return;
       setState(() {
-        _voices = filtered.isNotEmpty ? filtered : raw;
+        _voices = filtered.isNotEmpty
+            ? List<Map<String, dynamic>>.from(filtered)
+            : List<Map<String, dynamic>>.from(raw);
       });
     } catch (_) {
       if (!mounted) return;
@@ -79,22 +84,25 @@ class _SettingsTabState extends State<SettingsTab> {
   }
 
   Future<void> _announceByState() async {
-    final loggedIn = context.read<AuthController>().loggedIn;
-    final mode = loggedIn ? 'logged_in' : 'guest';
+    final auth = context.read<AuthController>();
+    final mode = auth.loggedIn ? 'logged_in' : 'guest';
+
     if (_lastAnnounceMode == mode) return;
     _lastAnnounceMode = mode;
 
-    if (loggedIn) {
+    if (auth.loggedIn) {
       await _speak(
         'Màn hình cài đặt. '
-            'Bạn có thể điều chỉnh tốc độ đọc, độ cao giọng, chọn giọng đọc, '
-            'nghe thử, đăng xuất hoặc đăng nhập lại.',
+            'Bạn có thể đổi người dùng, chỉnh sửa họ tên, email, số điện thoại, '
+            'điều chỉnh tốc độ đọc, độ cao giọng, chọn giọng đọc, nghe thử hoặc đăng xuất. '
+            'Có thể nói: đổi người dùng, sửa thông tin, tốc độ nhanh, giọng thấp.',
       );
     } else {
       await _speak(
         'Màn hình cài đặt. '
             'Bạn đang ở chế độ khách. '
-            'Bạn có thể đăng nhập, đăng ký, điều chỉnh giọng đọc và nghe thử.',
+            'Bạn có thể đăng nhập, đăng ký, điều chỉnh giọng đọc và nghe thử. '
+            'Sau khi đăng nhập, bạn có thể đổi người dùng và sửa thông tin hồ sơ.',
       );
     }
   }
@@ -113,8 +121,10 @@ class _SettingsTabState extends State<SettingsTab> {
     await voice.start(
       onFinal: (text) async {
         if (!mounted || epoch != _listenEpoch) return;
+
         final normalized = _norm(text);
         if (normalized.isEmpty || _isPromptEcho(normalized)) return;
+
         await _handleVoice(text);
       },
     );
@@ -142,7 +152,32 @@ class _SettingsTabState extends State<SettingsTab> {
       return;
     }
 
-    if (n.contains('nghe thu') || n.contains('doc thu') || n.contains('test giong')) {
+    if (n.contains('doi nguoi dung') ||
+        n.contains('thay doi nguoi dung') ||
+        n.contains('sua thong tin') ||
+        n.contains('chinh sua thong tin') ||
+        n.contains('chinh sua tai khoan') ||
+        n.contains('cap nhat thong tin') ||
+        n.contains('mo ho so')) {
+      await _openChangeUser();
+      return;
+    }
+
+    if (n.contains('doi tai khoan') ||
+        n.contains('tai khoan khac') ||
+        n.contains('dang nhap tai khoan khac')) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+      if (!mounted) return;
+      setState(() {});
+      return;
+    }
+
+    if (n.contains('nghe thu') ||
+        n.contains('doc thu') ||
+        n.contains('test giong')) {
       await _previewVoice();
       return;
     }
@@ -157,6 +192,8 @@ class _SettingsTabState extends State<SettingsTab> {
         context,
         MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
+      if (!mounted) return;
+      setState(() {});
       return;
     }
 
@@ -165,6 +202,8 @@ class _SettingsTabState extends State<SettingsTab> {
         context,
         MaterialPageRoute(builder: (_) => const RegisterScreen()),
       );
+      if (!mounted) return;
+      setState(() {});
       return;
     }
 
@@ -205,7 +244,7 @@ class _SettingsTabState extends State<SettingsTab> {
     }
 
     if (n.contains('giong thap') || n.contains('do cao thap')) {
-      await _setPitch(0.9, speakBack: true);
+      await _setPitch(0.90, speakBack: true);
       return;
     }
 
@@ -245,22 +284,46 @@ class _SettingsTabState extends State<SettingsTab> {
 
     final voiceIndex = _extractIndex(n);
     if (voiceIndex != null &&
-        (n.contains('chon giong') || n.contains('giong so') || n.contains('voice'))) {
+        (n.contains('chon giong') ||
+            n.contains('giong so') ||
+            n.contains('voice'))) {
       await _setVoiceByIndex(voiceIndex - 1);
       return;
     }
 
     await _speak(
       'Mình chưa hiểu lệnh. '
-          'Bạn có thể nói nghe thử, tốc độ nhanh, tốc độ chậm, giọng cao, giọng thấp, '
+          'Bạn có thể nói: đổi người dùng, sửa thông tin, nghe thử, tốc độ nhanh, giọng thấp, '
           'chọn giọng 1, đăng nhập, đăng ký hoặc đăng xuất.',
     );
   }
-  String _displayVoiceName(Map<dynamic, dynamic> voice, int index) {
+
+  Future<void> _openChangeUser() async {
+    final auth = context.read<AuthController>();
+
+    if (!auth.loggedIn) {
+      await _speak(
+        'Bạn đang ở chế độ khách. '
+            'Hãy đăng nhập trước để thay đổi thông tin người dùng.',
+      );
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+    );
+
+    if (!mounted) return;
+    setState(() {});
+    _lastAnnounceMode = '';
+  }
+
+  String _displayVoiceName(Map voice, int index) {
     final rawName = (voice['name'] ?? '').toString().toLowerCase();
     final locale = (voice['locale'] ?? '').toString();
 
-    const manualMap = <String, String>{
+    const manualMap = {
       'vi-vn-language': 'Giọng tiếng Việt mặc định',
       'vi-vn-x-gft-network': 'Giọng nữ 1',
       'vi-vn-x-vie-network': 'Giọng nữ 2',
@@ -279,20 +342,19 @@ class _SettingsTabState extends State<SettingsTab> {
     if (rawName.contains('vic')) return 'Giọng nữ ${index + 1}';
     if (rawName.contains('vid')) return 'Giọng nam ${index + 1}';
     if (rawName.contains('language')) return 'Giọng tiếng Việt mặc định';
-
     if (locale.toLowerCase().contains('vi')) {
       return 'Giọng tiếng Việt ${index + 1}';
     }
-
     return 'Giọng ${index + 1}';
   }
+
   int? _extractIndex(String normalized) {
     final digit = RegExp(r'\b(\d+)\b').firstMatch(normalized);
     if (digit != null) {
       return int.tryParse(digit.group(1)!);
     }
 
-    const map = <String, int>{
+    const map = {
       'mot': 1,
       'hai': 2,
       'ba': 3,
@@ -351,8 +413,10 @@ class _SettingsTabState extends State<SettingsTab> {
     final tts = context.read<TtsService>();
     final voice = _voices[index];
     await tts.setVoice(voice);
+
     if (!mounted) return;
     setState(() {});
+
     final displayName = _displayVoiceName(voice, index);
     await _speak('Đã chọn $displayName');
   }
@@ -373,6 +437,7 @@ class _SettingsTabState extends State<SettingsTab> {
 
   String _norm(String input) {
     var s = input.toLowerCase().trim();
+
     const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
         'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ'
         'ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨ'
@@ -391,9 +456,98 @@ class _SettingsTabState extends State<SettingsTab> {
     return s;
   }
 
+  Widget _changeUserCard() {
+    final auth = context.watch<AuthController>();
+    final subtitle = auth.loggedIn
+        ? '${auth.fullName?.trim().isNotEmpty == true ? auth.fullName!.trim() : auth.email ?? "Người dùng TalkSight"}'
+        '${(auth.phone ?? '').trim().isNotEmpty ? '\n${auth.email ?? ''} • ${auth.phone ?? ''}' : '\n${auth.email ?? ''}'}'
+        : 'Đăng nhập để cập nhật họ tên, email và số điện thoại của người dùng.';
+
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: auth.loggedIn
+            ? _openChangeUser
+            : () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          );
+          if (!mounted) return;
+          setState(() {});
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Thay đổi người dùng',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  color: AppColors.muted,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.bgBeige,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.record_voice_over_rounded,
+                          size: 16,
+                          color: AppColors.brandBrown,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Nói: đổi người dùng',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.brandBrown,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  Icon(
+                    auth.loggedIn
+                        ? Icons.edit_outlined
+                        : Icons.login_rounded,
+                    color: AppColors.brandBrown,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _headerCard() {
     final auth = context.watch<AuthController>();
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -430,7 +584,8 @@ class _SettingsTabState extends State<SettingsTab> {
     final voice = context.watch<VoiceController>();
     final subtitle = voice.isListening
         ? (voice.lastWords.trim().isEmpty ? 'Đang nghe...' : voice.lastWords.trim())
-        : 'Nhấn mic hoặc giữ màn hình 2 giây để điều khiển cài đặt';
+        : 'Nhấn mic hoặc giữ màn hình 2 giây để điều khiển cài đặt. '
+        'Có thể nói: đổi người dùng, sửa thông tin, tốc độ nhanh, giọng thấp.';
 
     return Card(
       child: Padding(
@@ -455,28 +610,28 @@ class _SettingsTabState extends State<SettingsTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    voice.isListening ? 'Đang nghe lệnh cài đặt' : 'Điều khiển bằng giọng nói',
+                    voice.isListening
+                        ? 'Đang nghe lệnh cài đặt'
+                        : 'Điều khiển bằng giọng nói',
                     style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.textDark,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 5),
                   Text(
                     subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
+                      fontSize: 13.5,
                       color: AppColors.muted,
-                      height: 1.4,
+                      height: 1.45,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
             IconButton(
-              tooltip: voice.isListening ? 'Dừng nghe' : 'Bắt đầu nghe',
               onPressed: () async {
                 if (voice.isListening) {
                   _listenEpoch++;
@@ -486,7 +641,9 @@ class _SettingsTabState extends State<SettingsTab> {
                 }
               },
               icon: Icon(
-                voice.isListening ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+                voice.isListening
+                    ? Icons.stop_circle_outlined
+                    : Icons.play_circle_outline,
                 color: AppColors.brandBrown,
               ),
             ),
@@ -530,50 +687,108 @@ class _SettingsTabState extends State<SettingsTab> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    auth.loggedIn
-                        ? (auth.email ?? 'Đã đăng nhập')
-                        : 'Guest mode',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                  child: auth.loggedIn
+                      ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        auth.fullName?.trim().isNotEmpty == true
+                            ? auth.fullName!.trim()
+                            : (auth.email ?? 'Đã đăng nhập'),
+                        style: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        auth.email ?? '',
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          color: AppColors.muted,
+                        ),
+                      ),
+                      if ((auth.phone ?? '').trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          auth.phone!.trim(),
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    ],
+                  )
+                      : const Text(
+                    'Bạn đang ở chế độ khách',
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
                       color: AppColors.textDark,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            if (auth.loggedIn)
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.brandBrown,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  onPressed: () async {
-                    await auth.logout();
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                  icon: const Icon(Icons.logout_rounded),
-                  label: const Text(
-                    'Đăng xuất',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-              )
-            else
+            const SizedBox(height: 16),
+            if (auth.loggedIn) ...[
               Row(
                 children: [
                   Expanded(
                     child: SizedBox(
-                      height: 50,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.brandBrown,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        onPressed: _openChangeUser,
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const Text(
+                          'Chỉnh sửa',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: SizedBox(
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.brandBrown,
+                          side: const BorderSide(color: AppColors.cardStroke),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                        ),
+                        onPressed: () async {
+                          await auth.logout();
+                          if (!mounted) return;
+                          setState(() {});
+                        },
+                        icon: const Icon(Icons.logout_rounded),
+                        label: const Text(
+                          'Đăng xuất',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 48,
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.brandBrown,
@@ -599,7 +814,7 @@ class _SettingsTabState extends State<SettingsTab> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: SizedBox(
-                      height: 50,
+                      height: 48,
                       child: OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.brandBrown,
@@ -624,6 +839,7 @@ class _SettingsTabState extends State<SettingsTab> {
                   ),
                 ],
               ),
+            ],
           ],
         ),
       ),
@@ -656,49 +872,95 @@ class _SettingsTabState extends State<SettingsTab> {
                 height: 1.5,
               ),
             ),
-            const SizedBox(height: 16),
-            _sliderTile(
-              title: 'Tốc độ đọc',
-              valueText: tts.rate.toStringAsFixed(2),
-              value: tts.rate,
-              min: 0.20,
-              max: 0.80,
-              divisions: 12,
+            const SizedBox(height: 18),
+            _SliderRow(
               icon: Icons.speed_rounded,
-              onChanged: (v) async {
-                await tts.setRate(v);
-                if (!mounted) return;
-                setState(() {});
-              },
-              onTapHeader: () async {
-                await _speak(
-                  'Thiết lập tốc độ đọc. Hiện tại là ${tts.rate.toStringAsFixed(2)}. '
-                      'Bạn có thể nói tốc độ chậm, tốc độ nhanh hoặc kéo thanh trượt.',
-                );
-              },
+              label: 'Tốc độ đọc',
+              valueText: tts.rate.toStringAsFixed(2),
+              child: Slider(
+                value: tts.rate.clamp(0.2, 0.8),
+                min: 0.2,
+                max: 0.8,
+                divisions: 12,
+                onChanged: (value) => _setRate(value),
+              ),
             ),
-            const SizedBox(height: 12),
-            _sliderTile(
-              title: 'Độ cao giọng',
+            const SizedBox(height: 8),
+            _SliderRow(
+              icon: Icons.graphic_eq_rounded,
+              label: 'Độ cao giọng',
               valueText: tts.pitch.toStringAsFixed(2),
-              value: tts.pitch,
-              min: 0.70,
-              max: 1.50,
-              divisions: 16,
-              icon: Icons.tune_rounded,
-              onChanged: (v) async {
-                await tts.setPitch(v);
-                if (!mounted) return;
-                setState(() {});
-              },
-              onTapHeader: () async {
-                await _speak(
-                  'Thiết lập độ cao giọng. Hiện tại là ${tts.pitch.toStringAsFixed(2)}. '
-                      'Bạn có thể nói giọng cao, giọng thấp hoặc kéo thanh trượt.',
-                );
-              },
+              child: Slider(
+                value: tts.pitch.clamp(0.7, 1.5),
+                min: 0.7,
+                max: 1.5,
+                divisions: 16,
+                onChanged: (value) => _setPitch(value),
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              decoration: BoxDecoration(
+                color: AppColors.bgBeige,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                'Giọng hiện tại: ${tts.voiceName?.trim().isNotEmpty == true ? tts.voiceName!.trim() : "Mặc định"}',
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (_loadingVoices)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2.2),
+                ),
+              )
+            else if (_voices.isNotEmpty) ...[
+              const Text(
+                'Chọn giọng đọc',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(
+                  _voices.length > 8 ? 8 : _voices.length,
+                      (index) {
+                    final voice = _voices[index];
+                    final label = _displayVoiceName(voice, index);
+                    final selected = (tts.voiceName ?? '').trim() ==
+                        (voice['name'] ?? '').toString().trim();
+
+                    return ChoiceChip(
+                      selected: selected,
+                      label: Text(label),
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: selected ? Colors.white : AppColors.brandBrown,
+                      ),
+                      selectedColor: AppColors.brandBrown,
+                      backgroundColor: AppColors.bgBeige,
+                      side: const BorderSide(color: AppColors.cardStroke),
+                      onSelected: (_) => _setVoiceByIndex(index),
+                    );
+                  },
+                ),
+              ),
+            ],
+            const SizedBox(height: 18),
             Row(
               children: [
                 Expanded(
@@ -752,245 +1014,16 @@ class _SettingsTabState extends State<SettingsTab> {
     );
   }
 
-  Widget _sliderTile({
-    required String title,
-    required String valueText,
-    required double value,
-    required double min,
-    required double max,
-    required int divisions,
-    required IconData icon,
-    required Future<void> Function(double) onChanged,
-    required Future<void> Function() onTapHeader,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.cardStroke),
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-      child: Column(
-        children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onTapHeader,
-            child: Row(
-              children: [
-                Icon(icon, color: AppColors.brandBrown),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textDark,
-                    ),
-                  ),
-                ),
-                Text(
-                  valueText,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.brandBrown,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Slider(
-            value: value.clamp(min, max),
-            min: min,
-            max: max,
-            divisions: divisions,
-            activeColor: AppColors.brandBrown,
-            inactiveColor: AppColors.cardStroke,
-            onChanged: (v) async {
-              await onChanged(v);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _voiceListCard() {
-    final tts = context.watch<TtsService>();
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Chọn giọng đọc',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: AppColors.textDark,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Bạn có thể chạm để chọn hoặc nói “chọn giọng 1”, “chọn giọng 2”.',
-              style: TextStyle(
-                fontSize: 13.5,
-                color: AppColors.muted,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 12),
-            if (_loadingVoices)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_voices.isEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.cardStroke),
-                ),
-                child: const Text(
-                  'Chưa lấy được danh sách giọng đọc từ thiết bị.',
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    height: 1.5,
-                  ),
-                ),
-              )
-            else
-              ...List.generate(_voices.length.clamp(0, 8), (index) {
-                final voice = _voices[index];
-                final rawName = (voice['name'] ?? 'Voice ${index + 1}').toString();
-                final displayName = _displayVoiceName(voice, index);
-                final locale = (voice['locale'] ?? '').toString();
-                final selected = tts.voiceName == rawName;
-
-                return Padding(
-                  padding: EdgeInsets.only(bottom: index == _voices.length - 1 ? 0 : 10),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: () async {
-                      await context.read<TtsService>().setVoice(voice);
-                      if (!mounted) return;
-                      setState(() {});
-                      await _speak('Đã chọn $displayName');
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                      decoration: BoxDecoration(
-                        color: selected ? AppColors.bgBeige : AppColors.card,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: selected ? AppColors.brandBrown : AppColors.cardStroke,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            alignment: Alignment.center,
-                            child: Text(
-                              '${index + 1}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.brandBrown,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  displayName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 14.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.textDark,
-                                  ),
-                                ),
-                                if (locale.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    locale,
-                                    style: const TextStyle(
-                                      fontSize: 12.5,
-                                      color: AppColors.muted,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          if (selected)
-                            const Icon(
-                              Icons.check_circle_rounded,
-                              color: AppColors.brandBrown,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _quickHelpCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text(
-              'Lệnh giọng nói gợi ý',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: AppColors.textDark,
-              ),
-            ),
-            SizedBox(height: 12),
-            _HelpLine('“Nghe thử”'),
-            _HelpLine('“Tốc độ nhanh” / “Tốc độ chậm”'),
-            _HelpLine('“Giọng cao” / “Giọng thấp”'),
-            _HelpLine('“Chọn giọng 1”'),
-            _HelpLine('“Đăng nhập” / “Đăng ký” / “Đăng xuất”'),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    context.watch<AuthController>();
-
     return HoldToListenLayer(
+      holdDuration: const Duration(seconds: 2),
       onTriggered: _startVoice,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 140),
         children: [
+          _changeUserCard(),
+          const SizedBox(height: 12),
           _headerCard(),
           const SizedBox(height: 12),
           _voiceCard(),
@@ -998,46 +1031,59 @@ class _SettingsTabState extends State<SettingsTab> {
           _accountCard(),
           const SizedBox(height: 12),
           _ttsControlsCard(),
-          const SizedBox(height: 12),
-          _voiceListCard(),
-          const SizedBox(height: 12),
-          _quickHelpCard(),
         ],
       ),
     );
   }
 }
 
-class _HelpLine extends StatelessWidget {
-  final String text;
-  const _HelpLine(this.text);
+class _SliderRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String valueText;
+  final Widget child;
+
+  const _SliderRow({
+    required this.icon,
+    required this.label,
+    required this.valueText,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardStroke),
+      ),
+      child: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 4),
-            child: Icon(
-              Icons.mic_none_rounded,
-              size: 16,
-              color: AppColors.brandBrown,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 14,
-                color: AppColors.textDark,
-                height: 1.45,
+          Row(
+            children: [
+              Icon(icon, color: AppColors.brandBrown, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textDark,
+                  ),
+                ),
               ),
-            ),
+              Text(
+                valueText,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.brandBrown,
+                ),
+              ),
+            ],
           ),
+          child,
         ],
       ),
     );
