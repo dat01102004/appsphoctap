@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
@@ -13,8 +13,6 @@ import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
 import '../../data/services/vision_api.dart';
-import '../auth/auth_controller.dart';
-import '../history/history_controller.dart';
 import '../player/player_controller.dart';
 import '../voice/voice_controller.dart';
 
@@ -29,6 +27,16 @@ class LiveVisionAction {
 
 enum _LiveVisionMode { caption, ocr }
 
+class _FrameSignature {
+  final List<int> bits;
+  final double brightness;
+
+  const _FrameSignature({
+    required this.bits,
+    required this.brightness,
+  });
+}
+
 class LiveVisionScreen extends StatefulWidget {
   const LiveVisionScreen({super.key});
 
@@ -37,36 +45,37 @@ class LiveVisionScreen extends StatefulWidget {
 }
 
 class _LiveVisionScreenState extends State<LiveVisionScreen> {
-  static const Duration _scanInterval = Duration(milliseconds: 900);
-  static const Duration _sameSceneCooldown = Duration(seconds: 4);
-  static const int _localNearDupMaxDistance = 6;
+  static const Duration _scanInterval = Duration(seconds: 5);
+  static const Duration _minApiGap = Duration(seconds: 5);
+
+  static const int _hashSize = 16;
+  static const int _hashPixels = _hashSize * _hashSize;
+
+  static const int _similarHashDistance = 22;
+  static const double _similarBrightnessGap = 18;
 
   CameraController? _camera;
   Timer? _scanTimer;
-  CancelToken? _activeCancelToken;
 
   bool _initializing = true;
-  bool _captureBusy = false;
-  bool _analyzing = false;
+  bool _busy = false;
   bool _scanEnabled = false;
   bool _autoSpeak = true;
   bool _speaking = false;
 
   int _listenEpoch = 0;
-  int _requestEpoch = 0;
-  int _speakEpoch = 0;
 
   String _lastPromptNorm = '';
   String _lastAutoSpeakNorm = '';
 
+  _FrameSignature? _lastSentSignature;
+  DateTime? _lastApiAt;
+  DateTime? _lastAutoSpeakAt;
+
   _LiveVisionMode _mode = _LiveVisionMode.caption;
-  _LiveVisionFrameHash? _lastSentFrameHash;
-  DateTime? _lastSentFrameAt;
 
   String _overlayText = 'Đưa camera vào vật bạn muốn xem';
   String _statusText = 'Đang mở camera...';
-
-  DateTime? _lastAutoSpeakAt;
 
   @override
   void initState() {
@@ -77,55 +86,65 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   @override
   void dispose() {
     _listenEpoch++;
-    _requestEpoch++;
-    _speakEpoch++;
     _scanTimer?.cancel();
-    _cancelActiveRequest();
-    unawaited(context.read<TtsService>().stop());
-    unawaited(context.read<VoiceController>().stop());
+
+    context.read<VoiceController>().stop();
+    context.read<TtsService>().stop();
     context.read<PlayerController>().setPlaying(false);
+
     _camera?.dispose();
     super.dispose();
   }
 
-  String get _screenTitle =>
-      _mode == _LiveVisionMode.ocr ? 'Đọc chữ trực tiếp' : 'Mô tả trực tiếp';
+  String get _screenTitle {
+    return _mode == _LiveVisionMode.ocr ? 'Đọc chữ trực tiếp' : 'Mô tả trực tiếp';
+  }
 
-  String get _modeChipLabel =>
-      _mode == _LiveVisionMode.ocr ? 'Quét chữ' : 'Mô tả';
+  String get _modeChipLabel {
+    return _mode == _LiveVisionMode.ocr ? 'Quét chữ' : 'Mô tả';
+  }
 
-  String get _helpText =>
-      'Giữ ở bất kỳ đâu khoảng 2 giây để ra lệnh. Nhấn hai lần ở bất kỳ đâu để nghe lại hướng dẫn.\n\n'
-          'Lệnh gợi ý: về trang chủ, đọc báo, quét chữ, lịch sử, tác vụ, cài đặt, đọc lại, tạm dừng, tiếp tục.';
+  String get _helpText {
+    return 'Giữ ở bất kỳ đâu khoảng 2 giây để ra lệnh. '
+        'Nhấn hai lần ở bất kỳ đâu để nghe lại hướng dẫn.\n\n'
+        'Lệnh gợi ý: về trang chủ, đọc báo, quét chữ, lịch sử, tác vụ, '
+        'cài đặt, đọc lại, tạm dừng, tiếp tục.';
+  }
 
   Future<void> _initCamera() async {
     try {
       final permission = await Permission.camera.request();
+
       if (!permission.isGranted) {
         if (!mounted) return;
-        await _speakInterruptible(
+
+        await _speak(
           'Bạn cần cấp quyền camera để dùng chụp nhanh.',
           title: 'Chụp nhanh',
         );
+
         if (!mounted) return;
         Navigator.pop(context, LiveVisionAction.home);
         return;
       }
 
       final cameras = await availableCameras();
+
       if (cameras.isEmpty) {
         if (!mounted) return;
-        await _speakInterruptible(
+
+        await _speak(
           'Thiết bị này chưa có camera khả dụng.',
           title: 'Chụp nhanh',
         );
+
         if (!mounted) return;
         Navigator.pop(context, LiveVisionAction.home);
         return;
       }
 
       final selected = cameras.firstWhere(
-            (camera) => camera.lensDirection == CameraLensDirection.back,
+            (e) => e.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
 
@@ -157,22 +176,21 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       await _announceAndStart();
     } catch (_) {
       if (!mounted) return;
-      await _speakInterruptible(
+
+      await _speak(
         'Không mở được camera.',
         title: 'Chụp nhanh',
       );
+
       if (!mounted) return;
       Navigator.pop(context, LiveVisionAction.home);
     }
   }
 
   Future<void> _announceAndStart() async {
-    _lastSentFrameHash = null;
-    _lastSentFrameAt = null;
     _stopScanLoop(reason: 'Đang hướng dẫn');
 
-    const prompt =
-        'Đã mở mô tả trực tiếp. Tự đọc đang bật. Bạn chỉ cần đưa camera vào cảnh vật. '
+    const prompt = 'Đã mở mô tả trực tiếp. '
         'Nếu muốn ra lệnh, hãy nhấn giữ ở bất kỳ đâu. '
         'Nếu muốn nghe lại hướng dẫn, hãy chạm nhanh hai lần ở bất kỳ đâu. '
         'Bạn có thể nói: về trang chủ, đọc báo, quét chữ, lịch sử, tác vụ hoặc cài đặt.';
@@ -187,9 +205,12 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       });
     }
 
-    await _speakInterruptible(prompt, title: 'Chụp nhanh');
+    await _speak(prompt, title: 'Chụp nhanh');
+
+    if (!mounted) return;
+
     _startScanLoop();
-    unawaited(_scanOnce(forceSpeak: false));
+    unawaited(_analyzeCurrentFrame(forceSpeak: false, forceSend: true));
   }
 
   Future<void> _listenOnce(
@@ -199,6 +220,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     final voice = context.read<VoiceController>();
 
     await voice.stop();
+
     if (!mounted || epoch != _listenEpoch) return;
 
     await voice.start(
@@ -210,7 +232,9 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
 
         if (raw.isEmpty || _isPromptEcho(normalized)) {
           await Future.delayed(const Duration(milliseconds: 250));
+
           if (!mounted || epoch != _listenEpoch) return;
+
           await _listenOnce(onFinal);
           return;
         }
@@ -223,64 +247,64 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   bool _isPromptEcho(String normalized) {
     if (normalized.isEmpty || _lastPromptNorm.isEmpty) return false;
     if (normalized == _lastPromptNorm) return true;
+
     if (normalized.length >= 24 && _lastPromptNorm.contains(normalized)) {
       return true;
     }
+
     return false;
   }
 
   Future<bool> _handleNavigationCommand(String raw) async {
-    final normalized = _norm(raw);
+    final n = _norm(raw);
 
-    if (_isExitCommand(normalized)) {
+    if (_isExitCommand(n)) {
       if (!mounted) return true;
       Navigator.pop(context, LiveVisionAction.home);
       return true;
     }
 
-    if (normalized.contains('trang chu') ||
-        normalized == 'home' ||
-        normalized.contains('ve home')) {
+    if (n.contains('trang chu') || n == 'home' || n.contains('ve home')) {
       if (!mounted) return true;
       Navigator.pop(context, LiveVisionAction.home);
       return true;
     }
 
-    if (normalized.contains('doc bao') ||
-        normalized.contains('tin tuc') ||
-        normalized.contains('bao moi') ||
-        normalized.contains('tin moi')) {
+    if (n.contains('doc bao') ||
+        n.contains('tin tuc') ||
+        n.contains('bao moi') ||
+        n.contains('tin moi')) {
       if (!mounted) return true;
       Navigator.pop(context, LiveVisionAction.news);
       return true;
     }
 
-    if (normalized.contains('xem lich su') ||
-        normalized.contains('mo lich su') ||
-        normalized.contains('vao lich su') ||
-        normalized == 'lich su') {
+    if (n.contains('xem lich su') ||
+        n.contains('mo lich su') ||
+        n.contains('vao lich su') ||
+        n == 'lich su') {
       if (!mounted) return true;
       Navigator.pop(context, LiveVisionAction.history);
       return true;
     }
 
-    if (normalized.contains('tac vu')) {
+    if (n.contains('tac vu')) {
       if (!mounted) return true;
       Navigator.pop(context, LiveVisionAction.tasks);
       return true;
     }
 
-    if (normalized.contains('cai dat') || normalized.contains('setting')) {
+    if (n.contains('cai dat') || n.contains('setting')) {
       if (!mounted) return true;
       Navigator.pop(context, LiveVisionAction.settings);
       return true;
     }
 
-    if (_looksLikeOcrIntent(normalized) &&
-        (normalized.contains('mo ') ||
-            normalized.contains('chuyen') ||
-            normalized.contains('vao ') ||
-            normalized.contains('man hinh'))) {
+    if (_looksLikeOcrIntent(n) &&
+        (n.contains('mo ') ||
+            n.contains('chuyen') ||
+            n.contains('vao ') ||
+            n.contains('man hinh'))) {
       if (!mounted) return true;
       Navigator.pop(context, LiveVisionAction.ocr);
       return true;
@@ -289,128 +313,83 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     return false;
   }
 
-  Future<void> _scanOnce({required bool forceSpeak}) async {
+  Future<void> _analyzeCurrentFrame({
+    required bool forceSpeak,
+    bool forceSend = false,
+  }) async {
     final camera = _camera;
-    if (!_scanEnabled ||
-        _initializing ||
-        camera == null ||
-        !camera.value.isInitialized ||
-        _captureBusy) {
+
+    if (!_scanEnabled || _busy || camera == null || !camera.value.isInitialized) {
       return;
     }
 
-    _captureBusy = true;
+    final now = DateTime.now();
+
+    if (!forceSend && _lastApiAt != null) {
+      final gap = now.difference(_lastApiAt!);
+      if (gap < _minApiGap) {
+        return;
+      }
+    }
+
+    _busy = true;
+
+    if (mounted) {
+      setState(() {
+        _statusText = _mode == _LiveVisionMode.ocr ? 'Đang kiểm tra chữ...' : 'Đang kiểm tra khung cảnh...';
+      });
+    }
+
     XFile? shot;
 
     try {
       shot = await camera.takePicture();
-      final file = File(shot.path);
-      final bytes = await file.readAsBytes();
-      final frameHash = _LiveVisionFrameHash.fromBytes(bytes);
 
-      if (!_shouldSendFrame(frameHash)) {
-        if (mounted && !_analyzing) {
+      final signature = await _makeFrameSignature(shot.path);
+
+      if (!forceSend && _isSimilarToLastSent(signature)) {
+        if (mounted) {
           setState(() {
-            _statusText = 'Khung hình gần giống, bỏ qua';
+            _statusText = 'Khung cảnh gần giống, đã bỏ qua';
           });
         }
-        await _deleteIfExists(file.path);
         return;
       }
 
-      _lastSentFrameHash = frameHash;
-      _lastSentFrameAt = DateTime.now();
-
-      final filePath = shot.path;
-      shot = null;
-      unawaited(_dispatchFrame(filePath: filePath, forceSpeak: forceSpeak));
-    } catch (_) {
       if (mounted) {
         setState(() {
-          _statusText = 'Không chụp được khung hình mới';
+          _statusText = _mode == _LiveVisionMode.ocr ? 'Đang đọc chữ...' : 'Đang mô tả...';
         });
       }
-    } finally {
-      if (shot != null) {
-        await _deleteIfExists(shot.path);
-      }
-      _captureBusy = false;
-    }
-  }
 
-  bool _shouldSendFrame(_LiveVisionFrameHash? candidate) {
-    if (candidate == null) return true;
-
-    final lastHash = _lastSentFrameHash;
-    if (lastHash == null) return true;
-
-    final distance = candidate.distanceTo(lastHash);
-    if (distance > _localNearDupMaxDistance) {
-      return true;
-    }
-
-    final lastAt = _lastSentFrameAt;
-    if (lastAt == null) return false;
-
-    return DateTime.now().difference(lastAt) >= _sameSceneCooldown;
-  }
-
-  Future<void> _dispatchFrame({
-    required String filePath,
-    required bool forceSpeak,
-  }) async {
-    final requestId = ++_requestEpoch;
-    _cancelActiveRequest();
-
-    final cancelToken = CancelToken();
-    _activeCancelToken = cancelToken;
-
-    if (mounted) {
-      setState(() {
-        _analyzing = true;
-        _statusText = _mode == _LiveVisionMode.ocr
-            ? 'Đang gửi khung chữ mới...'
-            : 'Đang gửi khung cảnh mới...';
-      });
-    }
-
-    try {
       final api = context.read<VisionApi>();
 
       String resultText = '';
-      int? historyId;
-      bool deduplicated = false;
-      bool savedToHistory = false;
 
       if (_mode == _LiveVisionMode.ocr) {
-        final res = await api.ocr(filePath, cancelToken: cancelToken);
+        final res = await api.ocrLive(shot.path);
+
         resultText = _cleanResult(
           res.text,
           fallback: 'Chưa thấy chữ rõ để đọc.',
         );
-        historyId = res.historyId;
-        deduplicated = res.deduplicated;
-        savedToHistory = res.savedToHistory;
       } else {
-        final res = await api.caption(filePath, cancelToken: cancelToken);
+        final res = await api.captionLive(shot.path);
+
         resultText = _cleanResult(
           res.caption,
           fallback: 'Mình chưa mô tả rõ được khung hình này.',
         );
-        historyId = res.historyId;
-        deduplicated = res.deduplicated;
-        savedToHistory = res.savedToHistory;
       }
 
-      if (!mounted || cancelToken.isCancelled || requestId != _requestEpoch) {
-        return;
-      }
+      _lastSentSignature = signature;
+      _lastApiAt = DateTime.now();
+
+      if (!mounted) return;
 
       setState(() {
         _overlayText = resultText;
-        _statusText = deduplicated
-            ? 'Khung hình gần giống, không lưu lặp'
-            : 'Đã cập nhật';
+        _statusText = 'Đã cập nhật';
       });
 
       context.read<PlayerController>().setNow(
@@ -419,94 +398,119 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
         newDetails: resultText,
       );
 
-      final auth = context.read<AuthController>();
-      if (historyId != null && auth.loggedIn && savedToHistory) {
-        final type = _mode == _LiveVisionMode.ocr ? 'ocr' : 'caption';
-        unawaited(
-          context.read<HistoryController>().load(
-            type: type,
-            announce: false,
-          ),
-        );
-      }
-
       if (forceSpeak || (_autoSpeak && _shouldAutoSpeak(resultText))) {
-        await _speakInterruptible(resultText, title: _screenTitle);
-      }
-    } on DioException catch (error) {
-      if (CancelToken.isCancel(error)) {
-        return;
-      }
-      if (mounted && requestId == _requestEpoch) {
-        setState(() {
-          _statusText = _dioMessage(error);
-        });
+        await _speak(resultText, title: _screenTitle);
       }
     } catch (_) {
-      if (mounted && requestId == _requestEpoch) {
+      if (mounted) {
         setState(() {
           _statusText = 'Có lỗi khi phân tích khung hình';
         });
       }
     } finally {
-      await _deleteIfExists(filePath);
-
-      if (_activeCancelToken == cancelToken) {
-        _activeCancelToken = null;
-      }
-
-      if (mounted && requestId == _requestEpoch) {
-        setState(() {
-          _analyzing = false;
-          if (_scanEnabled && !_speaking) {
-            _statusText = 'Đang quét trực tiếp';
+      if (shot != null) {
+        try {
+          final file = File(shot.path);
+          if (file.existsSync()) {
+            await file.delete();
           }
-        });
+        } catch (_) {}
+      }
+
+      _busy = false;
+    }
+  }
+
+  Future<_FrameSignature> _makeFrameSignature(String path) async {
+    final bytes = await File(path).readAsBytes();
+
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: _hashSize,
+      targetHeight: _hashSize,
+    );
+
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+
+    final byteData = await image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    );
+
+    image.dispose();
+
+    if (byteData == null) {
+      return const _FrameSignature(bits: [], brightness: 0);
+    }
+
+    final rgba = byteData.buffer.asUint8List();
+
+    final luminance = <double>[];
+    luminance.reserveIfPossible(_hashPixels);
+
+    double sum = 0;
+
+    for (int i = 0; i + 3 < rgba.length; i += 4) {
+      final r = rgba[i].toDouble();
+      final g = rgba[i + 1].toDouble();
+      final b = rgba[i + 2].toDouble();
+
+      final y = 0.299 * r + 0.587 * g + 0.114 * b;
+
+      luminance.add(y);
+      sum += y;
+    }
+
+    if (luminance.isEmpty) {
+      return const _FrameSignature(bits: [], brightness: 0);
+    }
+
+    final avg = sum / luminance.length;
+
+    final bits = luminance.map((v) => v >= avg ? 1 : 0).toList(growable: false);
+
+    return _FrameSignature(
+      bits: bits,
+      brightness: avg,
+    );
+  }
+
+  bool _isSimilarToLastSent(_FrameSignature current) {
+    final last = _lastSentSignature;
+
+    if (last == null) return false;
+    if (current.bits.isEmpty || last.bits.isEmpty) return false;
+    if (current.bits.length != last.bits.length) return false;
+
+    int diff = 0;
+
+    for (int i = 0; i < current.bits.length; i++) {
+      if (current.bits[i] != last.bits[i]) {
+        diff++;
       }
     }
-  }
 
-  String _dioMessage(DioException error) {
-    final data = error.response?.data;
-    if (data is Map && data['detail'] != null) {
-      return data['detail'].toString();
-    }
-    if (error.message != null && error.message!.trim().isNotEmpty) {
-      return error.message!.trim();
-    }
-    return 'Có lỗi khi gửi ảnh';
-  }
+    final brightnessGap = (current.brightness - last.brightness).abs();
 
-  Future<void> _deleteIfExists(String path) async {
-    try {
-      final file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-      }
-    } catch (_) {}
-  }
-
-  void _cancelActiveRequest() {
-    final token = _activeCancelToken;
-    if (token != null && !token.isCancelled) {
-      token.cancel('scene_changed');
-    }
-    _activeCancelToken = null;
+    return diff <= _similarHashDistance && brightnessGap <= _similarBrightnessGap;
   }
 
   bool _shouldAutoSpeak(String text) {
     final normalized = _norm(text);
+
     if (normalized.isEmpty) return false;
     if (normalized == _lastAutoSpeakNorm) return false;
 
     final now = DateTime.now();
+
     if (_lastAutoSpeakAt != null &&
-        now.difference(_lastAutoSpeakAt!) < const Duration(milliseconds: 1200)) {
+        now.difference(_lastAutoSpeakAt!) < const Duration(seconds: 6)) {
       return false;
     }
 
     _lastAutoSpeakNorm = normalized;
     _lastAutoSpeakAt = now;
+
     return true;
   }
 
@@ -519,16 +523,14 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   void _startScanLoop() {
     _scanEnabled = true;
     _scanTimer?.cancel();
-    _scanTimer = Timer.periodic(
-      _scanInterval,
-          (_) => unawaited(_scanOnce(forceSpeak: false)),
-    );
+
+    _scanTimer = Timer.periodic(_scanInterval, (_) {
+      unawaited(_analyzeCurrentFrame(forceSpeak: false));
+    });
 
     if (mounted) {
       setState(() {
-        if (!_analyzing && !_speaking) {
-          _statusText = 'Đang quét trực tiếp';
-        }
+        _statusText = 'Đang quét trực tiếp';
       });
     }
   }
@@ -536,6 +538,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   void _stopScanLoop({String reason = 'Đã tạm dừng'}) {
     _scanEnabled = false;
     _scanTimer?.cancel();
+
     if (mounted) {
       setState(() {
         _statusText = reason;
@@ -544,7 +547,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   }
 
   Future<void> _toggleScan() async {
-    await _stopSpeechImmediate(cancelRequest: true);
+    await _stopSpeechImmediate();
 
     if (_scanEnabled) {
       _stopScanLoop(reason: 'Đã tạm dừng');
@@ -552,13 +555,14 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     }
 
     _startScanLoop();
-    unawaited(_scanOnce(forceSpeak: false));
+    unawaited(_analyzeCurrentFrame(forceSpeak: false, forceSend: true));
   }
 
   Future<void> _listenCommandImmediately() async {
     if (_initializing) return;
 
-    await _stopSpeechImmediate(cancelRequest: true);
+    await _stopSpeechImmediate();
+
     _stopScanLoop(reason: 'Đang nghe lệnh');
     _lastPromptNorm = '';
 
@@ -574,84 +578,79 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   Future<void> _handleRuntimeCommand(String raw) async {
     if (await _handleNavigationCommand(raw)) return;
 
-    final normalized = _norm(raw);
+    final n = _norm(raw);
 
-    if (_isPauseCommand(normalized)) {
-      _cancelActiveRequest();
+    if (_isPauseCommand(n)) {
       _stopScanLoop(reason: 'Đã tạm dừng');
       return;
     }
 
-    if (_isResumeCommand(normalized)) {
+    if (_isResumeCommand(n)) {
       _startScanLoop();
-      unawaited(_scanOnce(forceSpeak: false));
+      unawaited(_analyzeCurrentFrame(forceSpeak: false, forceSend: true));
       return;
     }
 
-    if (_isSpeakAgainCommand(normalized)) {
-      await _speakInterruptible(_overlayText, title: _screenTitle);
+    if (_isSpeakAgainCommand(n)) {
+      await _speak(_overlayText, title: _screenTitle);
       return;
     }
 
-    if (normalized.contains('bat doc tu dong')) {
-      if (!mounted) return;
+    if (n.contains('bat doc tu dong')) {
       setState(() {
         _autoSpeak = true;
       });
-      await _speakInterruptible('Đã bật tự đọc.', title: _screenTitle);
+
+      await _speak('Đã bật tự đọc.', title: _screenTitle);
       return;
     }
 
-    if (normalized.contains('tat doc tu dong')) {
-      if (!mounted) return;
+    if (n.contains('tat doc tu dong')) {
       setState(() {
         _autoSpeak = false;
       });
-      await _speakInterruptible('Đã tắt tự đọc.', title: _screenTitle);
+
+      await _speak('Đã tắt tự đọc.', title: _screenTitle);
       return;
     }
 
-    if (_looksLikeOcrIntent(normalized)) {
-      if (!mounted) return;
+    if (_looksLikeOcrIntent(n)) {
+      _lastSentSignature = null;
+
       setState(() {
         _mode = _LiveVisionMode.ocr;
         _statusText = 'Đang quét trực tiếp';
         _overlayText = 'Đưa camera gần vùng có chữ';
       });
-      _lastSentFrameHash = null;
-      _lastSentFrameAt = null;
+
       _startScanLoop();
-      unawaited(_scanOnce(forceSpeak: true));
+      unawaited(_analyzeCurrentFrame(forceSpeak: true, forceSend: true));
       return;
     }
 
-    if (_looksLikeCaptionIntent(normalized)) {
-      if (!mounted) return;
+    if (_looksLikeCaptionIntent(n)) {
+      _lastSentSignature = null;
+
       setState(() {
         _mode = _LiveVisionMode.caption;
         _statusText = 'Đang quét trực tiếp';
         _overlayText = 'Đưa camera vào vùng bạn muốn mô tả';
       });
-      _lastSentFrameHash = null;
-      _lastSentFrameAt = null;
+
       _startScanLoop();
-      unawaited(_scanOnce(forceSpeak: true));
+      unawaited(_analyzeCurrentFrame(forceSpeak: true, forceSend: true));
       return;
     }
 
     _startScanLoop();
-    unawaited(_scanOnce(forceSpeak: true));
+    unawaited(_analyzeCurrentFrame(forceSpeak: true, forceSend: true));
   }
 
-  Future<void> _stopSpeechImmediate({bool cancelRequest = false}) async {
-    _speakEpoch++;
+  Future<void> _stopSpeechImmediate() async {
     await context.read<VoiceController>().stop();
     await context.read<TtsService>().stop();
-    context.read<PlayerController>().setPlaying(false);
 
-    if (cancelRequest) {
-      _cancelActiveRequest();
-    }
+    context.read<PlayerController>().setPlaying(false);
 
     if (mounted && _speaking) {
       setState(() {
@@ -660,116 +659,106 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     }
   }
 
-  Future<void> _speakInterruptible(
+  Future<void> _speak(
       String text, {
         required String title,
       }) async {
     final value = text.trim();
+
     if (value.isEmpty) return;
 
-    final speechId = ++_speakEpoch;
     final player = context.read<PlayerController>();
     final tts = context.read<TtsService>();
     final voice = context.read<VoiceController>();
 
-    final preview =
-    value.length > 88 ? '${value.substring(0, 88)}...' : value;
+    final preview = value.length > 88 ? '${value.substring(0, 88)}...' : value;
 
     player.setNow(
       title,
       preview,
       newDetails: value,
     );
+
     player.setPlaying(true);
 
     if (mounted) {
       setState(() {
         _speaking = true;
-        _statusText = 'Đang đọc';
       });
     }
 
-    await voice.stop();
-    await tts.stop();
+    try {
+      await voice.stop();
+      await tts.stop();
+      await tts.speak(value);
+    } finally {
+      player.setPlaying(false);
 
-    unawaited(() async {
-      if (speechId != _speakEpoch) return;
-      try {
-        await tts.speak(value);
-      } finally {
-        if (!mounted || speechId != _speakEpoch) return;
-        player.setPlaying(false);
+      if (mounted) {
         setState(() {
           _speaking = false;
-          if (_scanEnabled && !_analyzing) {
-            _statusText = 'Đang quét trực tiếp';
-          }
         });
       }
-    }());
+    }
   }
 
   Future<void> _speakHelp() async {
-    await _speakInterruptible(_helpText, title: 'Chụp nhanh');
+    await _speak(_helpText, title: 'Chụp nhanh');
   }
 
   Future<void> _onHoldToListen() async {
     await _listenCommandImmediately();
   }
 
-  bool _isExitCommand(String normalized) {
-    return normalized.contains('thoat') ||
-        normalized.contains('dong') ||
-        normalized.contains('tat camera') ||
-        normalized.contains('dung chup nhanh');
+  bool _isExitCommand(String n) {
+    return n.contains('thoat') ||
+        n.contains('dong') ||
+        n.contains('tat camera') ||
+        n.contains('dung chup nhanh');
   }
 
-  bool _isPauseCommand(String normalized) {
-    return normalized.contains('tam dung') ||
-        normalized.contains('dung lai') ||
-        normalized == 'dung';
+  bool _isPauseCommand(String n) {
+    return n.contains('tam dung') || n.contains('dung lai') || n == 'dung';
   }
 
-  bool _isResumeCommand(String normalized) {
-    return normalized.contains('tiep tuc') ||
-        normalized.contains('quet tiep') ||
-        normalized.contains('bat lai');
+  bool _isResumeCommand(String n) {
+    return n.contains('tiep tuc') || n.contains('quet tiep') || n.contains('bat lai');
   }
 
-  bool _isSpeakAgainCommand(String normalized) {
-    return normalized.contains('doc lai') ||
-        normalized.contains('nghe lai') ||
-        normalized.contains('lap lai');
+  bool _isSpeakAgainCommand(String n) {
+    return n.contains('doc lai') || n.contains('nghe lai') || n.contains('lap lai');
   }
 
-  bool _looksLikeOcrIntent(String normalized) {
-    return normalized.contains('quet chu') ||
-        normalized.contains('doc chu') ||
-        normalized.contains('o c r') ||
-        normalized.contains('ocr') ||
-        normalized.contains('van ban') ||
-        normalized.contains('doc bien') ||
-        normalized.contains('doc bang');
+  bool _looksLikeOcrIntent(String n) {
+    return n.contains('quet chu') ||
+        n.contains('doc chu') ||
+        n.contains('o c r') ||
+        n.contains('ocr') ||
+        n.contains('van ban') ||
+        n.contains('doc bien') ||
+        n.contains('doc bang');
   }
 
-  bool _looksLikeCaptionIntent(String normalized) {
-    return normalized.contains('mo ta') ||
-        normalized.contains('canh vat') ||
-        normalized.contains('do vat') ||
-        normalized.contains('xem giup') ||
-        normalized.contains('nhin giup') ||
-        normalized.contains('tim do');
+  bool _looksLikeCaptionIntent(String n) {
+    return n.contains('mo ta') ||
+        n.contains('canh vat') ||
+        n.contains('do vat') ||
+        n.contains('xem giup') ||
+        n.contains('nhin giup') ||
+        n.contains('tim do');
   }
 
   String _preview(String text) {
     final value = text.trim();
+
     if (value.isEmpty) return '(Trống)';
     if (value.length <= 80) return value;
+
     return '${value.substring(0, 80)}...';
   }
 
   String _norm(String input) {
-    var value = input.toLowerCase().trim();
+    var s = input.toLowerCase().trim();
 
     const withDia =
         'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
@@ -777,11 +766,11 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
         'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
 
     for (int i = 0; i < withDia.length; i++) {
-      value = value.replaceAll(withDia[i], without[i]);
+      s = s.replaceAll(withDia[i], without[i]);
     }
 
-    value = value.replaceAll(RegExp(r'\s+'), ' ');
-    return value;
+    s = s.replaceAll(RegExp(r'\s+'), ' ');
+    return s;
   }
 
   @override
@@ -794,7 +783,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       onTriggered: _onHoldToListen,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onDoubleTap: () => unawaited(_speakHelp()),
+        onDoubleTap: _speakHelp,
         child: Scaffold(
           backgroundColor: Colors.black,
           body: _initializing || camera == null || !camera.value.isInitialized
@@ -830,8 +819,10 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
                         children: [
                           _RoundTopButton(
                             icon: Icons.arrow_back_ios_new_rounded,
-                            onTap: () =>
-                                Navigator.pop(context, LiveVisionAction.home),
+                            onTap: () => Navigator.pop(
+                              context,
+                              LiveVisionAction.home,
+                            ),
                           ),
                           const SizedBox(width: 10),
                           _TopChip(
@@ -918,9 +909,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
                               ),
                               child: SingleChildScrollView(
                                 child: Text(
-                                  _overlayText.trim().isEmpty
-                                      ? '(Trống)'
-                                      : _overlayText,
+                                  _overlayText.trim().isEmpty ? '(Trống)' : _overlayText,
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 18,
@@ -938,9 +927,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
                                     icon: _scanEnabled
                                         ? Icons.pause_rounded
                                         : Icons.play_arrow_rounded,
-                                    label: _scanEnabled
-                                        ? 'Tạm dừng'
-                                        : 'Tiếp tục',
+                                    label: _scanEnabled ? 'Tạm dừng' : 'Tiếp tục',
                                     onTap: _toggleScan,
                                   ),
                                 ),
@@ -961,7 +948,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
                                   child: _VisionActionButton(
                                     icon: Icons.volume_up_rounded,
                                     label: 'Đọc lại',
-                                    onTap: () => _speakInterruptible(
+                                    onTap: () => _speak(
                                       _overlayText,
                                       title: _screenTitle,
                                     ),
@@ -973,12 +960,12 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
                                     icon: _autoSpeak
                                         ? Icons.hearing_disabled_rounded
                                         : Icons.record_voice_over_rounded,
-                                    label: _autoSpeak
-                                        ? 'Tắt tự đọc'
-                                        : 'Bật tự đọc',
+                                    label: _autoSpeak ? 'Tắt tự đọc' : 'Bật tự đọc',
                                     onTap: () async {
                                       await _stopSpeechImmediate();
+
                                       if (!mounted) return;
+
                                       setState(() {
                                         _autoSpeak = !_autoSpeak;
                                       });
@@ -1003,7 +990,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
                   ),
                 ),
               ),
-              if (_analyzing || _captureBusy)
+              if (_busy)
                 Positioned.fill(
                   child: IgnorePointer(
                     child: Container(
@@ -1019,47 +1006,6 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   }
 }
 
-class _LiveVisionFrameHash {
-  final BigInt bits;
-
-  const _LiveVisionFrameHash(this.bits);
-
-  static _LiveVisionFrameHash? fromBytes(Uint8List bytes) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) return null;
-
-    final resized = img.copyResize(
-      decoded,
-      width: 9,
-      height: 8,
-    );
-    final grayscale = img.grayscale(resized);
-
-    var bits = BigInt.zero;
-    for (int y = 0; y < 8; y++) {
-      for (int x = 0; x < 8; x++) {
-        final left = grayscale.getPixel(x, y).r.toInt();
-        final right = grayscale.getPixel(x + 1, y).r.toInt();
-        bits = (bits << 1) | BigInt.from(left > right ? 1 : 0);
-      }
-    }
-
-    return _LiveVisionFrameHash(bits);
-  }
-
-  int distanceTo(_LiveVisionFrameHash other) {
-    var value = bits ^ other.bits;
-    var count = 0;
-    while (value > BigInt.zero) {
-      if ((value & BigInt.one) == BigInt.one) {
-        count++;
-      }
-      value = value >> 1;
-    }
-    return count;
-  }
-}
-
 class _TopChip extends StatelessWidget {
   final String label;
   final bool active;
@@ -1072,7 +1018,10 @@ class _TopChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
         color: active ? AppColors.brandBrown : Colors.white.withOpacity(0.16),
         borderRadius: BorderRadius.circular(18),
@@ -1145,7 +1094,11 @@ class _VisionActionButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: Colors.white, size: 20),
+              Icon(
+                icon,
+                color: Colors.white,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
@@ -1164,4 +1117,8 @@ class _VisionActionButton extends StatelessWidget {
       ),
     );
   }
+}
+
+extension _ListReserveExtension<T> on List<T> {
+  void reserveIfPossible(int length) {}
 }

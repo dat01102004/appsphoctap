@@ -8,10 +8,25 @@ class VisionApi {
 
   VisionApi(this.client);
 
-  Future<OcrResponse> ocr(
-      String filePath, {
-        CancelToken? cancelToken,
-      }) async {
+  Future<OcrResponse> ocr(String filePath) async {
+    final form = FormData.fromMap({
+      "file": await MultipartFile.fromFile(filePath),
+    });
+
+    final res = await client.dio.post("/ocr", data: form);
+    return OcrResponse.fromJson(res.data);
+  }
+
+  Future<CaptionResponse> caption(String filePath) async {
+    final form = FormData.fromMap({
+      "file": await MultipartFile.fromFile(filePath),
+    });
+
+    final res = await client.dio.post("/caption", data: form);
+    return CaptionResponse.fromJson(res.data);
+  }
+
+  Future<OcrResponse> ocrLive(String filePath) async {
     final form = FormData.fromMap({
       "file": await MultipartFile.fromFile(filePath),
     });
@@ -19,16 +34,15 @@ class VisionApi {
     final res = await client.dio.post(
       "/ocr",
       data: form,
-      cancelToken: cancelToken,
+      queryParameters: {
+        "save_history": false,
+      },
     );
 
     return OcrResponse.fromJson(res.data);
   }
 
-  Future<CaptionResponse> caption(
-      String filePath, {
-        CancelToken? cancelToken,
-      }) async {
+  Future<CaptionResponse> captionLive(String filePath) async {
     final form = FormData.fromMap({
       "file": await MultipartFile.fromFile(filePath),
     });
@@ -36,7 +50,9 @@ class VisionApi {
     final res = await client.dio.post(
       "/caption",
       data: form,
-      cancelToken: cancelToken,
+      queryParameters: {
+        "save_history": false,
+      },
     );
 
     return CaptionResponse.fromJson(res.data);

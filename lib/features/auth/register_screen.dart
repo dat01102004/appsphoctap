@@ -62,7 +62,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'Bạn cần nhập họ và tên, email, số điện thoại và mật khẩu. '
           'Bạn cũng có thể dùng giọng nói. '
           'Ví dụ: họ tên Nguyễn Văn A, email người dùng a còng gmail chấm com, '
-          'số điện thoại 0 9 1 2 3 4 5 6 7 8, mật khẩu người dùng một hai ba, sau đó nói đăng ký.',
+          'số điện thoại 0 9 1 2 3 4 5 6 7 8, mật khẩu người dùng một hai ba, sau đó nói đăng ký.'
+        'Giữ màn hình 2 giây để sử dụng giọng nói',
     );
   }
 

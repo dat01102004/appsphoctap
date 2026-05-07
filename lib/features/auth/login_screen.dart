@@ -52,11 +52,12 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _announceIntro() async {
     await _speak(
       'Màn hình đăng nhập. '
-          'Bạn có thể chạm vào ô email hoặc mật khẩu để nhập tay. '
+          'Bạn cần nhập email và mật khẩu.'
           'Bạn cũng có thể dùng giọng nói. '
           'Ví dụ: nói email người dùng a còng gmail chấm com, '
           'mật khẩu người dùng một hai ba, '
-          'hoặc nói đăng nhập.',
+          'và nói đăng nhập.'
+          'Giữ màn hình 2 giây để sử dụng giọng nói',
     );
   }
 
@@ -99,7 +100,48 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     return false;
   }
+  bool _hasPhrase(String n, String phrase) {
+    return ' $n '.contains(' $phrase ');
+  }
 
+  bool _isRegisterNavigationIntent(String n) {
+    return _hasPhrase(n, 'dang ky') ||
+        _hasPhrase(n, 'dang ki') ||
+        n.contains('mo dang ky') ||
+        n.contains('mo dang ki') ||
+        n.contains('sang dang ky') ||
+        n.contains('sang dang ki') ||
+        n.contains('qua dang ky') ||
+        n.contains('qua dang ki') ||
+        n.contains('vao dang ky') ||
+        n.contains('vao dang ki') ||
+        n.contains('toi muon dang ky') ||
+        n.contains('toi muon dang ki') ||
+        n.contains('can dang ky') ||
+        n.contains('can dang ki') ||
+        n.contains('cho toi dang ky') ||
+        n.contains('cho toi dang ki') ||
+        n.contains('tao tai khoan') ||
+        n.contains('tao account') ||
+        n.contains('lap tai khoan') ||
+        n.contains('mo tai khoan') ||
+        n.contains('chua co tai khoan') ||
+        n.contains('tai khoan moi') ||
+        n.contains('nguoi dung moi') ||
+        n.contains('dang ky tai khoan') ||
+        n.contains('dang ki tai khoan');
+  }
+
+  bool _isLoginSubmitIntent(String n) {
+    return _hasPhrase(n, 'dang nhap') ||
+        n == 'vao' ||
+        n.contains('cho toi dang nhap') ||
+        n.contains('toi muon dang nhap') ||
+        n.contains('bat dau dang nhap') ||
+        n.contains('xac nhan dang nhap') ||
+        n.contains('login') ||
+        n.contains('sign in');
+  }
   Future<void> _handleVoiceCommand(String raw) async {
     final n = _norm(raw);
 
@@ -118,10 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    if (n.contains('mo dang ky') ||
-        n.contains('sang dang ky') ||
-        n.contains('tao tai khoan') ||
-        n == 'dang ky') {
+    if (_isRegisterNavigationIntent(n)) {
       await Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const RegisterScreen()),
@@ -185,14 +224,14 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    if (n.contains('dang nhap') || n == 'vao') {
+    if (_isLoginSubmitIntent(n)) {
       await _submit();
       return;
     }
 
     await _speak(
       'Mình chưa hiểu lệnh. '
-          'Bạn có thể nói email cộng nội dung, mật khẩu cộng nội dung, đăng nhập hoặc mở đăng ký.',
+          'Bạn có thể nói email cộng nội dung, mật khẩu cộng nội dung, đăng nhập hoặc mở đăng ký. Giữ màn hình 2 giây để sử dụng giọng nói',
     );
   }
 
