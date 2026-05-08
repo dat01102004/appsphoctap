@@ -163,7 +163,22 @@ class NewsAssistantController extends ChangeNotifier {
   void _invalidateListening() {
     _listenEpoch++;
   }
+  Future<void> silentStop({bool clearItems = false}) async {
+    _invalidateListening();
 
+    stage = NewsStage.idle;
+    micArmed = false;
+    _openingArticle = false;
+
+    if (clearItems) {
+      items = [];
+    }
+
+    notifyListeners();
+
+    await voice.stop();
+    await tts.stop();
+  }
   Future<void> _promptAndListen({
     required String prompt,
     required NewsStage expectedStage,

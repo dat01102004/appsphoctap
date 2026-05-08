@@ -40,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _greeted = false;
 
   String _lastSpokenText = '';
-  String _lastSpokenTitle = 'TalkSight';
+  String _lastSpokenTitle = 'MẮT NÓI';
   String _lastPromptNorm = '';
 
   int _listenEpoch = 0;
@@ -70,7 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _say(
         'Xin chào bạn! Hôm nay bạn muốn sử dụng tính năng gì? '
             'Bạn có thể nói: quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh.',
-        title: 'TalkSight',
+        title: 'MẮT NÓI',
       );
       await _startVoiceOnce();
     });
@@ -171,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (raw.isEmpty) {
           await _say(
             'Mình chưa nghe rõ. Bạn nói lại giúp mình nhé.',
-            title: 'TalkSight',
+            title: 'MẮT NÓI',
           );
 
           if (!mounted || epoch != _listenEpoch || _index != 0) return;
@@ -249,7 +249,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       await _say(
         prompt,
-        title: 'TalkSight',
+        title: 'MẮT NÓI',
       );
 
       if (!mounted || _index != 0) return;
@@ -260,7 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final player = context.read<PlayerController>();
     player.setNow(
-      'TalkSight',
+      'MẮT NÓI',
       'Đang nghe...',
       newDetails: 'Đang nghe lệnh ở trang chủ',
     );
@@ -743,7 +743,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await _say(
       'Mình chưa hiểu lệnh. Bạn thử nói: đăng nhập, đăng ký, đọc báo, quét chữ, mô tả ảnh, xem lịch sử hoặc chụp nhanh.',
-      title: 'TalkSight',
+      title: 'MẮT NÓI',
     );
 
     if (!mounted) return;
@@ -802,7 +802,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (_lastSpokenText.trim().isEmpty) {
-      await _say('Bạn chưa có nội dung để phát lại.', title: 'TalkSight');
+      await _say('Bạn chưa có nội dung để phát lại.', title: 'MẮT NÓI');
       return;
     }
 

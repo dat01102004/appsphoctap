@@ -17,8 +17,22 @@ dependencies:
   camera: ^0.12.0
   photo_manager: ^3.9.0
   image: ^4.1.7
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
   assets:
     - assets/icons/
+    - assets/logo/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo/logo2.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/logo/logo2.png"
+  remove_alpha_ios: true
+  min_sdk_android: 21
