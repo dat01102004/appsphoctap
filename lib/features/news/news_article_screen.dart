@@ -9,17 +9,12 @@ import '../player/player_sliding_panel.dart';
 import '../voice/voice_controller.dart';
 import 'news_article_payload.dart';
 
-enum NewsArticleExitAction {
-  askNextAction,
-}
+enum NewsArticleExitAction { askNextAction }
 
 class NewsArticleScreen extends StatefulWidget {
   final NewsArticlePayload article;
 
-  const NewsArticleScreen({
-    super.key,
-    required this.article,
-  });
+  const NewsArticleScreen({super.key, required this.article});
 
   @override
   State<NewsArticleScreen> createState() => _NewsArticleScreenState();
@@ -122,6 +117,7 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
     _returnOnCompletion = true;
     _wasSpeaking = false;
 
+    await context.read<VoiceController>().stop();
     await _tts!.stop();
     await Future.delayed(const Duration(milliseconds: 120));
     await _tts!.speak(_safeSummary);
@@ -132,6 +128,7 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
 
     _returnOnCompletion = false;
     _wasSpeaking = false;
+    await context.read<VoiceController>().stop();
     await _tts!.stop();
     _player?.setPlaying(false);
   }
@@ -149,7 +146,7 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
 
   Future<void> _onMicPressed() async {
     if (!mounted) return;
-    
+
     final voice = context.read<VoiceController>();
     if (voice.isListening) {
       await voice.stop();
@@ -171,12 +168,18 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
       onFinal: (text) async {
         if (!mounted) return;
         final raw = text.toLowerCase().trim();
-        
-        if (raw.contains('dung') || raw.contains('ngung') || raw.contains('thoi')) {
+
+        if (raw.contains('dung') ||
+            raw.contains('ngung') ||
+            raw.contains('thoi')) {
           await _stop();
-        } else if (raw.contains('tiep') || raw.contains('phat') || raw.contains('nghe')) {
+        } else if (raw.contains('tiep') ||
+            raw.contains('phat') ||
+            raw.contains('nghe')) {
           await _play();
-        } else if (raw.contains('thoat') || raw.contains('dong') || raw.contains('ve')) {
+        } else if (raw.contains('thoat') ||
+            raw.contains('dong') ||
+            raw.contains('ve')) {
           Navigator.pop(context);
         } else {
           // Mặc định nếu không hiểu lệnh thì coi như muốn đóng/thoát hoặc giữ nguyên
@@ -193,7 +196,8 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
   @override
   Widget build(BuildContext context) {
     final sourceLine = [
-      if ((widget.article.source ?? '').trim().isNotEmpty) widget.article.source!,
+      if ((widget.article.source ?? '').trim().isNotEmpty)
+        widget.article.source!,
       if ((widget.article.published ?? '').trim().isNotEmpty)
         widget.article.published!,
     ].join(' • ');
@@ -204,9 +208,7 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
       child: WillPopScope(
         onWillPop: _onWillPop,
         child: Scaffold(
-          appBar: AppBar(
-            title: const Text('Bài báo'),
-          ),
+          appBar: AppBar(title: const Text('Bài báo')),
           body: Stack(
             children: [
               ListView(
@@ -256,7 +258,9 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
                           ),
                           const SizedBox(height: 12),
                           ValueListenableBuilder<TtsProgress?>(
-                            valueListenable: context.read<TtsService>().progress,
+                            valueListenable: context
+                                .read<TtsService>()
+                                .progress,
                             builder: (_, progress, __) {
                               return _HighlightedText(
                                 text: _safeSummary,
@@ -290,6 +294,7 @@ class _NewsArticleScreenState extends State<NewsArticleScreen> {
                   child: PlayerSlidingPanel(
                     onPlayPause: _togglePlayPause,
                     onStop: _stop,
+                    onReplay: _play,
                     onMic: _onMicPressed,
                   ),
                 ),
@@ -306,10 +311,7 @@ class _HighlightedText extends StatelessWidget {
   final String text;
   final TtsProgress? progress;
 
-  const _HighlightedText({
-    required this.text,
-    required this.progress,
-  });
+  const _HighlightedText({required this.text, required this.progress});
 
   int _clamp(int value, int min, int max) {
     if (value < min) return min;

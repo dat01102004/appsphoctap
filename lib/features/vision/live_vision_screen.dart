@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
@@ -11,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_intent.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
 import '../../data/services/vision_api.dart';
 import '../player/player_controller.dart';
@@ -20,6 +19,7 @@ class LiveVisionAction {
   static const String home = 'home';
   static const String news = 'news';
   static const String ocr = 'ocr';
+  static const String caption = 'caption';
   static const String history = 'history';
   static const String tasks = 'tasks';
   static const String settings = 'settings';
@@ -31,10 +31,7 @@ class _FrameSignature {
   final List<int> bits;
   final double brightness;
 
-  const _FrameSignature({
-    required this.bits,
-    required this.brightness,
-  });
+  const _FrameSignature({required this.bits, required this.brightness});
 }
 
 class LiveVisionScreen extends StatefulWidget {
@@ -97,7 +94,9 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   }
 
   String get _screenTitle {
-    return _mode == _LiveVisionMode.ocr ? 'Đọc chữ trực tiếp' : 'Mô tả trực tiếp';
+    return _mode == _LiveVisionMode.ocr
+        ? 'Đọc chữ trực tiếp'
+        : 'Mô tả trực tiếp';
   }
 
   String get _modeChipLabel {
@@ -144,7 +143,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       }
 
       final selected = cameras.firstWhere(
-            (e) => e.lensDirection == CameraLensDirection.back,
+        (e) => e.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
 
@@ -177,10 +176,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     } catch (_) {
       if (!mounted) return;
 
-      await _speak(
-        'Không mở được camera.',
-        title: 'Chụp nhanh',
-      );
+      await _speak('Không mở được camera.', title: 'Chụp nhanh');
 
       if (!mounted) return;
       Navigator.pop(context, LiveVisionAction.home);
@@ -190,7 +186,8 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   Future<void> _announceAndStart() async {
     _stopScanLoop(reason: 'Đang hướng dẫn');
 
-    const prompt = 'Đã mở mô tả trực tiếp. '
+    const prompt =
+        'Đã mở mô tả trực tiếp. '
         'Nếu muốn ra lệnh, hãy nhấn giữ ở bất kỳ đâu. '
         'Nếu muốn nghe lại hướng dẫn, hãy chạm nhanh hai lần ở bất kỳ đâu. '
         'Bạn có thể nói: về trang chủ, đọc báo, quét chữ, lịch sử, tác vụ hoặc cài đặt.';
@@ -213,9 +210,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     unawaited(_analyzeCurrentFrame(forceSpeak: false, forceSend: true));
   }
 
-  Future<void> _listenOnce(
-      Future<void> Function(String raw) onFinal,
-      ) async {
+  Future<void> _listenOnce(Future<void> Function(String raw) onFinal) async {
     final epoch = ++_listenEpoch;
     final voice = context.read<VoiceController>();
 
@@ -259,14 +254,12 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     final n = _norm(raw);
 
     if (_isExitCommand(n)) {
-      if (!mounted) return true;
-      Navigator.pop(context, LiveVisionAction.home);
+      await _exitWithAction(LiveVisionAction.home);
       return true;
     }
 
     if (n.contains('trang chu') || n == 'home' || n.contains('ve home')) {
-      if (!mounted) return true;
-      Navigator.pop(context, LiveVisionAction.home);
+      await _exitWithAction(LiveVisionAction.home);
       return true;
     }
 
@@ -274,8 +267,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
         n.contains('tin tuc') ||
         n.contains('bao moi') ||
         n.contains('tin moi')) {
-      if (!mounted) return true;
-      Navigator.pop(context, LiveVisionAction.news);
+      await _exitWithAction(LiveVisionAction.news);
       return true;
     }
 
@@ -283,20 +275,17 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
         n.contains('mo lich su') ||
         n.contains('vao lich su') ||
         n == 'lich su') {
-      if (!mounted) return true;
-      Navigator.pop(context, LiveVisionAction.history);
+      await _exitWithAction(LiveVisionAction.history);
       return true;
     }
 
     if (n.contains('tac vu')) {
-      if (!mounted) return true;
-      Navigator.pop(context, LiveVisionAction.tasks);
+      await _exitWithAction(LiveVisionAction.tasks);
       return true;
     }
 
     if (n.contains('cai dat') || n.contains('setting')) {
-      if (!mounted) return true;
-      Navigator.pop(context, LiveVisionAction.settings);
+      await _exitWithAction(LiveVisionAction.settings);
       return true;
     }
 
@@ -305,8 +294,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
             n.contains('chuyen') ||
             n.contains('vao ') ||
             n.contains('man hinh'))) {
-      if (!mounted) return true;
-      Navigator.pop(context, LiveVisionAction.ocr);
+      await _exitWithAction(LiveVisionAction.ocr);
       return true;
     }
 
@@ -319,7 +307,10 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   }) async {
     final camera = _camera;
 
-    if (!_scanEnabled || _busy || camera == null || !camera.value.isInitialized) {
+    if (!_scanEnabled ||
+        _busy ||
+        camera == null ||
+        !camera.value.isInitialized) {
       return;
     }
 
@@ -336,7 +327,9 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
 
     if (mounted) {
       setState(() {
-        _statusText = _mode == _LiveVisionMode.ocr ? 'Đang kiểm tra chữ...' : 'Đang kiểm tra khung cảnh...';
+        _statusText = _mode == _LiveVisionMode.ocr
+            ? 'Đang kiểm tra chữ...'
+            : 'Đang kiểm tra khung cảnh...';
       });
     }
 
@@ -358,7 +351,9 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
 
       if (mounted) {
         setState(() {
-          _statusText = _mode == _LiveVisionMode.ocr ? 'Đang đọc chữ...' : 'Đang mô tả...';
+          _statusText = _mode == _LiveVisionMode.ocr
+              ? 'Đang đọc chữ...'
+              : 'Đang mô tả...';
         });
       }
 
@@ -433,9 +428,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     final frame = await codec.getNextFrame();
     final image = frame.image;
 
-    final byteData = await image.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    );
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
 
     image.dispose();
 
@@ -469,10 +462,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
 
     final bits = luminance.map((v) => v >= avg ? 1 : 0).toList(growable: false);
 
-    return _FrameSignature(
-      bits: bits,
-      brightness: avg,
-    );
+    return _FrameSignature(bits: bits, brightness: avg);
   }
 
   bool _isSimilarToLastSent(_FrameSignature current) {
@@ -492,7 +482,8 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
 
     final brightnessGap = (current.brightness - last.brightness).abs();
 
-    return diff <= _similarHashDistance && brightnessGap <= _similarBrightnessGap;
+    return diff <= _similarHashDistance &&
+        brightnessGap <= _similarBrightnessGap;
   }
 
   bool _shouldAutoSpeak(String text) {
@@ -576,6 +567,9 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   }
 
   Future<void> _handleRuntimeCommand(String raw) async {
+    final handledGlobal = await _handleGlobalVoiceIntent(raw);
+    if (handledGlobal) return;
+
     if (await _handleNavigationCommand(raw)) return;
 
     final n = _norm(raw);
@@ -659,10 +653,50 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     }
   }
 
-  Future<void> _speak(
-      String text, {
-        required String title,
-      }) async {
+  Future<void> _exitWithAction(String action) async {
+    _listenEpoch++;
+    _stopScanLoop(reason: 'Äang chuyá»ƒn mĂ n hĂ¬nh');
+    await _stopSpeechImmediate();
+    if (!mounted) return;
+    Navigator.pop(context, action);
+  }
+
+  Future<bool> _handleGlobalVoiceIntent(String raw) async {
+    final intent = GlobalVoiceIntentParser.parse(raw);
+
+    switch (intent) {
+      case GlobalVoiceIntent.stopReading:
+        _stopScanLoop(reason: 'ÄĂ£ táº¡m dá»«ng');
+        await _stopSpeechImmediate();
+        return true;
+      case GlobalVoiceIntent.repeatReading:
+        await _speak(_overlayText, title: _screenTitle);
+        return true;
+      case GlobalVoiceIntent.back:
+      case GlobalVoiceIntent.home:
+        await _exitWithAction(LiveVisionAction.home);
+        return true;
+      case GlobalVoiceIntent.settings:
+        await _exitWithAction(LiveVisionAction.settings);
+        return true;
+      case GlobalVoiceIntent.history:
+        await _exitWithAction(LiveVisionAction.history);
+        return true;
+      case GlobalVoiceIntent.news:
+        await _exitWithAction(LiveVisionAction.news);
+        return true;
+      case GlobalVoiceIntent.ocr:
+        await _exitWithAction(LiveVisionAction.ocr);
+        return true;
+      case GlobalVoiceIntent.caption:
+        await _exitWithAction(LiveVisionAction.caption);
+        return true;
+      case GlobalVoiceIntent.none:
+        return false;
+    }
+  }
+
+  Future<void> _speak(String text, {required String title}) async {
     final value = text.trim();
 
     if (value.isEmpty) return;
@@ -673,11 +707,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
 
     final preview = value.length > 88 ? '${value.substring(0, 88)}...' : value;
 
-    player.setNow(
-      title,
-      preview,
-      newDetails: value,
-    );
+    player.setNow(title, preview, newDetails: value);
 
     player.setPlaying(true);
 
@@ -722,11 +752,15 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   }
 
   bool _isResumeCommand(String n) {
-    return n.contains('tiep tuc') || n.contains('quet tiep') || n.contains('bat lai');
+    return n.contains('tiep tuc') ||
+        n.contains('quet tiep') ||
+        n.contains('bat lai');
   }
 
   bool _isSpeakAgainCommand(String n) {
-    return n.contains('doc lai') || n.contains('nghe lai') || n.contains('lap lai');
+    return n.contains('doc lai') ||
+        n.contains('nghe lai') ||
+        n.contains('lap lai');
   }
 
   bool _looksLikeOcrIntent(String n) {
@@ -788,218 +822,226 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
           backgroundColor: Colors.black,
           body: _initializing || camera == null || !camera.value.isInitialized
               ? const Center(
-            child: CircularProgressIndicator(color: Colors.white),
-          )
+                  child: CircularProgressIndicator(color: Colors.white),
+                )
               : Stack(
-            children: [
-              Positioned.fill(
-                child: CameraPreview(camera),
-              ),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.30),
-                        Colors.black.withOpacity(0.12),
-                        Colors.black.withOpacity(0.55),
-                      ],
+                  children: [
+                    Positioned.fill(child: CameraPreview(camera)),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withOpacity(0.30),
+                              Colors.black.withOpacity(0.12),
+                              Colors.black.withOpacity(0.55),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
-              SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          _RoundTopButton(
-                            icon: Icons.arrow_back_ios_new_rounded,
-                            onTap: () => Navigator.pop(
-                              context,
-                              LiveVisionAction.home,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          _TopChip(
-                            label: _modeChipLabel,
-                            active: true,
-                          ),
-                          const SizedBox(width: 8),
-                          _TopChip(
-                            label: _autoSpeak ? 'Tự đọc' : 'Không tự đọc',
-                            active: false,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.28),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.10),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              voice.isListening
-                                  ? Icons.mic_rounded
-                                  : (_scanEnabled
-                                  ? Icons.visibility_rounded
-                                  : Icons.pause_circle_outline_rounded),
-                              size: 18,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                voice.isListening
-                                    ? (voice.lastWords.trim().isEmpty
-                                    ? 'Đang nghe lệnh'
-                                    : 'Đang nghe: ${voice.lastWords}')
-                                    : _statusText,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.42),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.12),
-                          ),
-                        ),
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              _screenTitle,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                minHeight: 110,
-                                maxHeight: 190,
-                              ),
-                              child: SingleChildScrollView(
-                                child: Text(
-                                  _overlayText.trim().isEmpty ? '(Trống)' : _overlayText,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    height: 1.45,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 14),
                             Row(
                               children: [
-                                Expanded(
-                                  child: _VisionActionButton(
-                                    icon: _scanEnabled
-                                        ? Icons.pause_rounded
-                                        : Icons.play_arrow_rounded,
-                                    label: _scanEnabled ? 'Tạm dừng' : 'Tiếp tục',
-                                    onTap: _toggleScan,
-                                  ),
+                                _RoundTopButton(
+                                  icon: Icons.arrow_back_ios_new_rounded,
+                                  onTap: () {
+                                    unawaited(
+                                      _exitWithAction(LiveVisionAction.home),
+                                    );
+                                  },
                                 ),
                                 const SizedBox(width: 10),
-                                Expanded(
-                                  child: _VisionActionButton(
-                                    icon: Icons.mic_rounded,
-                                    label: 'Ra lệnh',
-                                    onTap: _listenCommandImmediately,
-                                  ),
+                                _TopChip(label: _modeChipLabel, active: true),
+                                const SizedBox(width: 8),
+                                _TopChip(
+                                  label: _autoSpeak ? 'Tự đọc' : 'Không tự đọc',
+                                  active: false,
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _VisionActionButton(
-                                    icon: Icons.volume_up_rounded,
-                                    label: 'Đọc lại',
-                                    onTap: () => _speak(
-                                      _overlayText,
-                                      title: _screenTitle,
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.28),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.10),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    voice.isListening
+                                        ? Icons.mic_rounded
+                                        : (_scanEnabled
+                                              ? Icons.visibility_rounded
+                                              : Icons
+                                                    .pause_circle_outline_rounded),
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      voice.isListening
+                                          ? (voice.lastWords.trim().isEmpty
+                                                ? 'Đang nghe lệnh'
+                                                : 'Đang nghe: ${voice.lastWords}')
+                                          : _statusText,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: _VisionActionButton(
-                                    icon: _autoSpeak
-                                        ? Icons.hearing_disabled_rounded
-                                        : Icons.record_voice_over_rounded,
-                                    label: _autoSpeak ? 'Tắt tự đọc' : 'Bật tự đọc',
-                                    onTap: () async {
-                                      await _stopSpeechImmediate();
-
-                                      if (!mounted) return;
-
-                                      setState(() {
-                                        _autoSpeak = !_autoSpeak;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                            const SizedBox(height: 14),
-                            Text(
-                              _helpText,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.78),
-                                fontSize: 12.5,
-                                height: 1.5,
+                            const Spacer(),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.fromLTRB(
+                                14,
+                                14,
+                                14,
+                                14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.42),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.12),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _screenTitle,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      minHeight: 110,
+                                      maxHeight: 190,
+                                    ),
+                                    child: SingleChildScrollView(
+                                      child: Text(
+                                        _overlayText.trim().isEmpty
+                                            ? '(Trống)'
+                                            : _overlayText,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 18,
+                                          height: 1.45,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _VisionActionButton(
+                                          icon: _scanEnabled
+                                              ? Icons.pause_rounded
+                                              : Icons.play_arrow_rounded,
+                                          label: _scanEnabled
+                                              ? 'Tạm dừng'
+                                              : 'Tiếp tục',
+                                          onTap: _toggleScan,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _VisionActionButton(
+                                          icon: Icons.mic_rounded,
+                                          label: 'Ra lệnh',
+                                          onTap: _listenCommandImmediately,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _VisionActionButton(
+                                          icon: Icons.volume_up_rounded,
+                                          label: 'Đọc lại',
+                                          onTap: () => _speak(
+                                            _overlayText,
+                                            title: _screenTitle,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _VisionActionButton(
+                                          icon: _autoSpeak
+                                              ? Icons.hearing_disabled_rounded
+                                              : Icons.record_voice_over_rounded,
+                                          label: _autoSpeak
+                                              ? 'Tắt tự đọc'
+                                              : 'Bật tự đọc',
+                                          onTap: () async {
+                                            await _stopSpeechImmediate();
+
+                                            if (!mounted) return;
+
+                                            setState(() {
+                                              _autoSpeak = !_autoSpeak;
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    _helpText,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.78),
+                                      fontSize: 12.5,
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-              if (_busy)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: Container(
-                      color: Colors.black.withOpacity(0.06),
                     ),
-                  ),
+                    if (_busy)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: Container(
+                            color: Colors.black.withOpacity(0.06),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
         ),
       ),
     );
@@ -1010,18 +1052,12 @@ class _TopChip extends StatelessWidget {
   final String label;
   final bool active;
 
-  const _TopChip({
-    required this.label,
-    required this.active,
-  });
+  const _TopChip({required this.label, required this.active});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 10,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: active ? AppColors.brandBrown : Colors.white.withOpacity(0.16),
         borderRadius: BorderRadius.circular(18),
@@ -1042,10 +1078,7 @@ class _RoundTopButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
 
-  const _RoundTopButton({
-    required this.icon,
-    required this.onTap,
-  });
+  const _RoundTopButton({required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1058,11 +1091,7 @@ class _RoundTopButton extends StatelessWidget {
         child: SizedBox(
           width: 42,
           height: 42,
-          child: Icon(
-            icon,
-            color: Colors.white,
-            size: 18,
-          ),
+          child: Icon(icon, color: Colors.white, size: 18),
         ),
       ),
     );
@@ -1094,11 +1123,7 @@ class _VisionActionButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                color: Colors.white,
-                size: 20,
-              ),
+              Icon(icon, color: Colors.white, size: 20),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(

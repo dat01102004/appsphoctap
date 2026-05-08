@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_intent.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
 import '../auth/auth_controller.dart';
 import '../history/history_controller.dart';
@@ -57,8 +58,6 @@ class _CaptionScreenState extends State<CaptionScreen> {
   int _listenEpoch = 0;
 
   String _lastPromptNorm = '';
-  String _lastSpokenText = '';
-  String _lastSpokenTitle = 'Mô tả ảnh';
   String _latestImagePath = '';
 
   late final TtsService _tts;
@@ -85,6 +84,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
   void dispose() {
     _listenEpoch++;
     _voice.stop();
+    _tts.stop();
     _tts.isSpeaking.removeListener(_syncPlayerSpeaking);
     super.dispose();
   }
@@ -121,9 +121,9 @@ class _CaptionScreenState extends State<CaptionScreen> {
   }
 
   Future<void> _promptAndListen(
-      String prompt,
-      Future<void> Function(String raw) onFinal,
-      ) async {
+    String prompt,
+    Future<void> Function(String raw) onFinal,
+  ) async {
     final epoch = ++_listenEpoch;
 
     await _voice.stop();
@@ -184,6 +184,9 @@ class _CaptionScreenState extends State<CaptionScreen> {
   }
 
   Future<void> _handleSourceUtterance(String raw) async {
+    final handledGlobal = await _handleGlobalVoiceIntent(raw);
+    if (handledGlobal) return;
+
     final n = _norm(raw);
 
     if (n.contains('chup anh') || n.contains('camera') || n == 'chup') {
@@ -209,6 +212,9 @@ class _CaptionScreenState extends State<CaptionScreen> {
   }
 
   Future<void> _handleGalleryChoiceUtterance(String raw) async {
+    final handledGlobal = await _handleGlobalVoiceIntent(raw);
+    if (handledGlobal) return;
+
     final n = _norm(raw);
 
     if (n.contains('moi nhat') ||
@@ -238,6 +244,9 @@ class _CaptionScreenState extends State<CaptionScreen> {
   }
 
   Future<void> _handleNextActionUtterance(String raw) async {
+    final handledGlobal = await _handleGlobalVoiceIntent(raw);
+    if (handledGlobal) return;
+
     final n = _norm(raw);
 
     if (n.contains('thoat') || n.contains('dung')) {
@@ -317,9 +326,68 @@ class _CaptionScreenState extends State<CaptionScreen> {
   }
 
   Future<void> _popToRoot() async {
+    _listenEpoch++;
+    await _voice.stop();
+    await _tts.stop();
     if (!mounted) return;
     Navigator.of(context).popUntil((route) => route.isFirst);
     await Future.delayed(const Duration(milliseconds: 120));
+  }
+
+  Future<bool> _handleGlobalVoiceIntent(String raw) async {
+    final intent = GlobalVoiceIntentParser.parse(raw);
+
+    switch (intent) {
+      case GlobalVoiceIntent.stopReading:
+        await _onStopTts();
+        await _voice.stop();
+        return true;
+      case GlobalVoiceIntent.repeatReading:
+        await _replayCurrentPlayerText();
+        return true;
+      case GlobalVoiceIntent.back:
+        _listenEpoch++;
+        await _voice.stop();
+        await _tts.stop();
+        if (!mounted) return true;
+        Navigator.pop(context);
+        return true;
+      case GlobalVoiceIntent.home:
+        await _popToRoot();
+        if (widget.onGoHome != null) {
+          await widget.onGoHome!();
+        }
+        return true;
+      case GlobalVoiceIntent.settings:
+        await _popToRoot();
+        if (widget.onGoSettings != null) {
+          await widget.onGoSettings!();
+        }
+        return true;
+      case GlobalVoiceIntent.history:
+        await _popToRoot();
+        if (widget.onGoHistory != null) {
+          await widget.onGoHistory!();
+        }
+        return true;
+      case GlobalVoiceIntent.news:
+        await _popToRoot();
+        if (widget.onOpenNews != null) {
+          await widget.onOpenNews!();
+        }
+        return true;
+      case GlobalVoiceIntent.ocr:
+        await _popToRoot();
+        if (widget.onOpenOcr != null) {
+          await widget.onOpenOcr!();
+        }
+        return true;
+      case GlobalVoiceIntent.caption:
+        await _askSource();
+        return true;
+      case GlobalVoiceIntent.none:
+        return false;
+    }
   }
 
   Future<void> _openCameraCaptureFlow() async {
@@ -330,9 +398,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
 
     final path = await Navigator.push<String>(
       context,
-      MaterialPageRoute(
-        builder: (_) => const CaptionCameraScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const CaptionCameraScreen()),
     );
 
     if (!mounted || path == null || path.trim().isEmpty) {
@@ -590,15 +656,9 @@ class _CaptionScreenState extends State<CaptionScreen> {
     } catch (_) {}
   }
 
-  Future<void> _speakWithPlayer(
-      String text, {
-        required String title,
-      }) async {
+  Future<void> _speakWithPlayer(String text, {required String title}) async {
     final value = text.trim();
     if (value.isEmpty) return;
-
-    _lastSpokenTitle = title;
-    _lastSpokenText = value;
 
     final preview = value.length > 88 ? '${value.substring(0, 88)}...' : value;
     _player.setNow(title, preview, newDetails: value);
@@ -638,26 +698,38 @@ class _CaptionScreenState extends State<CaptionScreen> {
 
   Future<void> _onPlayPause() async {
     if (_tts.isSpeaking.value) {
-      await _tts.stop();
+      await _onStopTts();
+      return;
+    }
+
+    await _replayCurrentPlayerText();
+  }
+
+  String _currentPlayerText() {
+    return _player.replayText;
+  }
+
+  Future<void> _replayCurrentPlayerText() async {
+    final text = _currentPlayerText();
+
+    await _voice.stop();
+    await _tts.stop();
+
+    if (text.isEmpty || text == 'Đã dừng' || text == 'Sẵn sàng') {
+      await _tts.speak('Chưa có nội dung để đọc lại.');
+      return;
+    }
+
+    _player.setPlaying(true);
+    try {
+      await _tts.speak(text);
+    } finally {
       _player.setPlaying(false);
-      return;
     }
-
-    if (_lastSpokenText.trim().isEmpty) {
-      await _speakWithPlayer(
-        'Bạn chưa có nội dung để phát lại.',
-        title: 'Mô tả ảnh',
-      );
-      return;
-    }
-
-    await _speakWithPlayer(
-      _lastSpokenText,
-      title: _lastSpokenTitle,
-    );
   }
 
   Future<void> _onStopTts() async {
+    await _voice.stop();
     await _tts.stop();
     _player.setPlaying(false);
   }
@@ -741,8 +813,8 @@ class _CaptionScreenState extends State<CaptionScreen> {
   Widget _buildVoiceBanner(VoiceController voice) {
     final text = voice.isListening
         ? (voice.lastWords.trim().isEmpty
-        ? 'Đang nghe lệnh...'
-        : 'Đang nghe: ${voice.lastWords}')
+              ? 'Đang nghe lệnh...'
+              : 'Đang nghe: ${voice.lastWords}')
         : _hintText();
 
     return Container(
@@ -750,9 +822,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.cardStroke.withValues(alpha: 0.78),
-        ),
+        border: Border.all(color: AppColors.cardStroke.withValues(alpha: 0.78)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -776,10 +846,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
-                color: Colors.black54,
-                height: 1.45,
-              ),
+              style: const TextStyle(color: Colors.black54, height: 1.45),
             ),
           ),
         ],
@@ -794,9 +861,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: AppColors.cardStroke.withValues(alpha: 0.80),
-        ),
+        border: Border.all(color: AppColors.cardStroke.withValues(alpha: 0.80)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -808,10 +873,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
                 const Expanded(
                   child: Text(
                     'Ảnh vừa mô tả',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                    ),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
                   ),
                 ),
                 if (hasImage)
@@ -835,22 +897,22 @@ class _CaptionScreenState extends State<CaptionScreen> {
                   aspectRatio: 4 / 3,
                   child: hasImage
                       ? GestureDetector(
-                    onTap: _openImagePreviewDialog,
-                    child: Image.file(
-                      File(_latestImagePath),
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) =>
-                      const _VisionImageErrorBox(
-                        message: 'Không mở được ảnh vừa chọn.',
-                      ),
-                    ),
-                  )
+                          onTap: _openImagePreviewDialog,
+                          child: Image.file(
+                            File(_latestImagePath),
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) =>
+                                const _VisionImageErrorBox(
+                                  message: 'Không mở được ảnh vừa chọn.',
+                                ),
+                          ),
+                        )
                       : const _VisionPlaceholderBox(
-                    icon: Icons.image_outlined,
-                    title: 'Chưa có ảnh',
-                    subtitle:
-                    'Ảnh bạn chụp hoặc chọn sẽ hiện lớn tại đây.',
-                  ),
+                          icon: Icons.image_outlined,
+                          title: 'Chưa có ảnh',
+                          subtitle:
+                              'Ảnh bạn chụp hoặc chọn sẽ hiện lớn tại đây.',
+                        ),
                 ),
               ),
             ),
@@ -867,9 +929,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: AppColors.cardStroke.withValues(alpha: 0.82),
-        ),
+        border: Border.all(color: AppColors.cardStroke.withValues(alpha: 0.82)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
@@ -881,19 +941,13 @@ class _CaptionScreenState extends State<CaptionScreen> {
                 const Expanded(
                   child: Text(
                     'Kết quả mô tả',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                    ),
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
                   ),
                 ),
                 IconButton(
                   onPressed: result.isEmpty
                       ? null
-                      : () => _speakWithPlayer(
-                    result,
-                    title: 'Kết quả mô tả',
-                  ),
+                      : () => _speakWithPlayer(result, title: 'Kết quả mô tả'),
                   icon: const Icon(Icons.volume_up_rounded),
                 ),
               ],
@@ -948,9 +1002,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
             IconButton(
               onPressed: _toggleMic,
               icon: Icon(
-                voice.isListening
-                    ? Icons.mic_rounded
-                    : Icons.mic_none_rounded,
+                voice.isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
               ),
             ),
           ],
@@ -970,9 +1022,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
             if (c.loading)
               Container(
                 color: Colors.black.withValues(alpha: 0.14),
-                child: const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                child: const Center(child: CircularProgressIndicator()),
               ),
             Positioned(
               left: 16,
@@ -1021,6 +1071,7 @@ class _CaptionScreenState extends State<CaptionScreen> {
                 child: PlayerSlidingPanel(
                   onPlayPause: _onPlayPause,
                   onStop: _onStopTts,
+                  onReplay: _replayCurrentPlayerText,
                   onMic: _toggleMic,
                 ),
               ),
@@ -1067,10 +1118,7 @@ class _VisionPlaceholderBox extends StatelessWidget {
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.black54,
-              height: 1.45,
-            ),
+            style: const TextStyle(color: Colors.black54, height: 1.45),
           ),
         ],
       ),
@@ -1082,10 +1130,7 @@ class _VisionImageErrorBox extends StatelessWidget {
   final String message;
   final bool compact;
 
-  const _VisionImageErrorBox({
-    required this.message,
-    this.compact = true,
-  });
+  const _VisionImageErrorBox({required this.message, this.compact = true});
 
   @override
   Widget build(BuildContext context) {
@@ -1158,10 +1203,7 @@ class _ActionButton extends StatelessWidget {
                   child: Text(
                     text,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: fg,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(color: fg, fontWeight: FontWeight.w800),
                   ),
                 ),
               ],
@@ -1177,8 +1219,5 @@ class _RankedAsset {
   final AssetEntity asset;
   final int priority;
 
-  const _RankedAsset({
-    required this.asset,
-    required this.priority,
-  });
+  const _RankedAsset({required this.asset, required this.priority});
 }

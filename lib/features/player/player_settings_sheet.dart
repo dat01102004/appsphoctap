@@ -40,7 +40,10 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Cài đặt giọng đọc", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+          const Text(
+            "Cài đặt giọng đọc",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          ),
           const SizedBox(height: 12),
 
           Text("Tốc độ: ${rate.toStringAsFixed(2)}"),
@@ -66,24 +69,38 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
           ),
 
           const SizedBox(height: 10),
-          const Text("Giọng nói", style: TextStyle(fontWeight: FontWeight.w800)),
+          const Text(
+            "Giọng nói",
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
           const SizedBox(height: 6),
 
           if (voices.isEmpty)
-            const Text("Đang tải danh sách giọng...", style: TextStyle(color: Colors.black54))
+            const Text(
+              "Đang tải danh sách giọng...",
+              style: TextStyle(color: Colors.black54),
+            )
           else
             DropdownButtonFormField<Map<String, String>>(
               value: selected,
               items: voices
-                  .where((e) => (e is Map) && (e["locale"]?.toString().contains("vi") ?? false))
-                  .map<Map<String, String>>((e) => {
-                "name": e["name"].toString(),
-                "locale": e["locale"].toString(),
-              })
-                  .map((m) => DropdownMenuItem(
-                value: m,
-                child: Text("${m["name"]} (${m["locale"]})"),
-              ))
+                  .where(
+                    (e) =>
+                        (e is Map) &&
+                        (e["locale"]?.toString().contains("vi") ?? false),
+                  )
+                  .map<Map<String, String>>(
+                    (e) => {
+                      "name": e["name"].toString(),
+                      "locale": e["locale"].toString(),
+                    },
+                  )
+                  .map(
+                    (m) => DropdownMenuItem(
+                      value: m,
+                      child: Text("${m["name"]} (${m["locale"]})"),
+                    ),
+                  )
                   .toList(),
               onChanged: (v) async {
                 if (v == null) return;
@@ -94,7 +111,9 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
               decoration: InputDecoration(
                 filled: true,
                 fillColor: AppColors.card,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
             ),
 
@@ -103,9 +122,12 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
             width: double.infinity,
             height: 46,
             child: ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.brandBrown, foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.brandBrown,
+                foregroundColor: Colors.white,
+              ),
               onPressed: () async {
-                await tts.speak("Đây là câu thử giọng đọc của TalkSight.");
+                await tts.speak("Đây là câu thử giọng đọc của Mắt Nói.");
               },
               child: const Text("Nghe thử"),
             ),

@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_intent.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
 import '../auth/auth_controller.dart';
 import '../history/history_controller.dart';
@@ -57,8 +58,6 @@ class _OcrScreenState extends State<OcrScreen> {
   int _listenEpoch = 0;
 
   String _lastPromptNorm = '';
-  String _lastSpokenText = '';
-  String _lastSpokenTitle = 'OCR';
   String _latestImagePath = '';
 
   late final TtsService _tts;
@@ -85,6 +84,7 @@ class _OcrScreenState extends State<OcrScreen> {
   void dispose() {
     _listenEpoch++;
     _voice.stop();
+    _tts.stop();
     _tts.isSpeaking.removeListener(_syncPlayerSpeaking);
     super.dispose();
   }
@@ -97,7 +97,7 @@ class _OcrScreenState extends State<OcrScreen> {
     _stage = _OcrStage.waitingSource;
     if (mounted) setState(() {});
     await _promptAndListen(
-      'Bạn muốn chụp ảnh để quét hay chọn ảnh từ thư viện?',
+      'Báº¡n muá»‘n chá»¥p áº£nh Ä‘á»ƒ quĂ©t hay chá»n áº£nh tá»« thÆ° viá»‡n?',
       _handleSourceUtterance,
     );
   }
@@ -106,7 +106,7 @@ class _OcrScreenState extends State<OcrScreen> {
     _stage = _OcrStage.waitingGalleryChoice;
     if (mounted) setState(() {});
     await _promptAndListen(
-      'Bạn muốn quét ảnh mới nhất hay ảnh thứ 2?',
+      'Báº¡n muá»‘n quĂ©t áº£nh má»›i nháº¥t hay áº£nh thá»© 2?',
       _handleGalleryChoiceUtterance,
     );
   }
@@ -115,15 +115,15 @@ class _OcrScreenState extends State<OcrScreen> {
     _stage = _OcrStage.waitingNextAction;
     if (mounted) setState(() {});
     await _promptAndListen(
-      'Bạn muốn sử dụng thêm tính năng gì khác? Bạn có thể nói: quét lại, mô tả ảnh, đọc báo, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
+      'Báº¡n muá»‘n sá»­ dá»¥ng thĂªm tĂ­nh nÄƒng gĂ¬ khĂ¡c? Báº¡n cĂ³ thá»ƒ nĂ³i: quĂ©t láº¡i, mĂ´ táº£ áº£nh, Ä‘á»c bĂ¡o, lá»‹ch sá»­, tĂ¡c vá»¥, cĂ i Ä‘áº·t, trang chá»§ hoáº·c thoĂ¡t.',
       _handleNextActionUtterance,
     );
   }
 
   Future<void> _promptAndListen(
-      String prompt,
-      Future<void> Function(String raw) onFinal,
-      ) async {
+    String prompt,
+    Future<void> Function(String raw) onFinal,
+  ) async {
     final epoch = ++_listenEpoch;
 
     await _voice.stop();
@@ -184,6 +184,9 @@ class _OcrScreenState extends State<OcrScreen> {
   }
 
   Future<void> _handleSourceUtterance(String raw) async {
+    final handledGlobal = await _handleGlobalVoiceIntent(raw);
+    if (handledGlobal) return;
+
     final n = _norm(raw);
 
     if (n.contains('chup anh') || n.contains('camera') || n == 'chup') {
@@ -201,7 +204,7 @@ class _OcrScreenState extends State<OcrScreen> {
     }
 
     await _speakWithPlayer(
-      'Mình chưa hiểu. Bạn có thể nói chụp ảnh hoặc chọn ảnh từ thư viện.',
+      'MĂ¬nh chÆ°a hiá»ƒu. Báº¡n cĂ³ thá»ƒ nĂ³i chá»¥p áº£nh hoáº·c chá»n áº£nh tá»« thÆ° viá»‡n.',
       title: 'OCR',
     );
     await Future.delayed(const Duration(milliseconds: 600));
@@ -209,6 +212,9 @@ class _OcrScreenState extends State<OcrScreen> {
   }
 
   Future<void> _handleGalleryChoiceUtterance(String raw) async {
+    final handledGlobal = await _handleGlobalVoiceIntent(raw);
+    if (handledGlobal) return;
+
     final n = _norm(raw);
 
     if (n.contains('moi nhat') ||
@@ -230,7 +236,7 @@ class _OcrScreenState extends State<OcrScreen> {
     }
 
     await _speakWithPlayer(
-      'Mình chưa hiểu. Bạn có thể nói ảnh mới nhất hoặc ảnh thứ 2.',
+      'MĂ¬nh chÆ°a hiá»ƒu. Báº¡n cĂ³ thá»ƒ nĂ³i áº£nh má»›i nháº¥t hoáº·c áº£nh thá»© 2.',
       title: 'OCR',
     );
     await Future.delayed(const Duration(milliseconds: 600));
@@ -238,6 +244,9 @@ class _OcrScreenState extends State<OcrScreen> {
   }
 
   Future<void> _handleNextActionUtterance(String raw) async {
+    final handledGlobal = await _handleGlobalVoiceIntent(raw);
+    if (handledGlobal) return;
+
     final n = _norm(raw);
 
     if (n.contains('thoat') || n.contains('dung')) {
@@ -309,7 +318,7 @@ class _OcrScreenState extends State<OcrScreen> {
     }
 
     await _speakWithPlayer(
-      'Mình chưa hiểu. Bạn có thể nói quét lại, mô tả ảnh, đọc báo, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
+      'MĂ¬nh chÆ°a hiá»ƒu. Báº¡n cĂ³ thá»ƒ nĂ³i quĂ©t láº¡i, mĂ´ táº£ áº£nh, Ä‘á»c bĂ¡o, lá»‹ch sá»­, tĂ¡c vá»¥, cĂ i Ä‘áº·t, trang chá»§ hoáº·c thoĂ¡t.',
       title: 'OCR',
     );
     await Future.delayed(const Duration(milliseconds: 600));
@@ -317,9 +326,68 @@ class _OcrScreenState extends State<OcrScreen> {
   }
 
   Future<void> _popToRoot() async {
+    _listenEpoch++;
+    await _voice.stop();
+    await _tts.stop();
     if (!mounted) return;
     Navigator.of(context).popUntil((route) => route.isFirst);
     await Future.delayed(const Duration(milliseconds: 120));
+  }
+
+  Future<bool> _handleGlobalVoiceIntent(String raw) async {
+    final intent = GlobalVoiceIntentParser.parse(raw);
+
+    switch (intent) {
+      case GlobalVoiceIntent.stopReading:
+        await _onStopTts();
+        await _voice.stop();
+        return true;
+      case GlobalVoiceIntent.repeatReading:
+        await _replayCurrentPlayerText();
+        return true;
+      case GlobalVoiceIntent.back:
+        _listenEpoch++;
+        await _voice.stop();
+        await _tts.stop();
+        if (!mounted) return true;
+        Navigator.pop(context);
+        return true;
+      case GlobalVoiceIntent.home:
+        await _popToRoot();
+        if (widget.onGoHome != null) {
+          await widget.onGoHome!();
+        }
+        return true;
+      case GlobalVoiceIntent.settings:
+        await _popToRoot();
+        if (widget.onGoSettings != null) {
+          await widget.onGoSettings!();
+        }
+        return true;
+      case GlobalVoiceIntent.history:
+        await _popToRoot();
+        if (widget.onGoHistory != null) {
+          await widget.onGoHistory!();
+        }
+        return true;
+      case GlobalVoiceIntent.news:
+        await _popToRoot();
+        if (widget.onOpenNews != null) {
+          await widget.onOpenNews!();
+        }
+        return true;
+      case GlobalVoiceIntent.caption:
+        await _popToRoot();
+        if (widget.onOpenCaption != null) {
+          await widget.onOpenCaption!();
+        }
+        return true;
+      case GlobalVoiceIntent.ocr:
+        await _askSource();
+        return true;
+      case GlobalVoiceIntent.none:
+        return false;
+    }
   }
 
   Future<void> _openCameraCaptureFlow() async {
@@ -330,9 +398,7 @@ class _OcrScreenState extends State<OcrScreen> {
 
     final path = await Navigator.push<String>(
       context,
-      MaterialPageRoute(
-        builder: (_) => const OcrCameraScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const OcrCameraScreen()),
     );
 
     if (!mounted || path == null || path.trim().isEmpty) {
@@ -348,7 +414,7 @@ class _OcrScreenState extends State<OcrScreen> {
     final permission = await PhotoManager.requestPermissionExtend();
     if (!permission.isAuth && !permission.hasAccess) {
       await _speakWithPlayer(
-        'Bạn chưa cấp quyền thư viện ảnh. Hãy bật quyền ảnh trong cài đặt ứng dụng.',
+        'Báº¡n chÆ°a cáº¥p quyá»n thÆ° viá»‡n áº£nh. HĂ£y báº­t quyá»n áº£nh trong cĂ i Ä‘áº·t á»©ng dá»¥ng.',
         title: 'OCR',
       );
       return false;
@@ -385,7 +451,7 @@ class _OcrScreenState extends State<OcrScreen> {
       await _runOcr(file.path);
     } catch (_) {
       await _speakWithPlayer(
-        'Có lỗi khi chọn ảnh từ thư viện.',
+        'CĂ³ lá»—i khi chá»n áº£nh tá»« thÆ° viá»‡n.',
         title: 'OCR',
       );
       await Future.delayed(const Duration(milliseconds: 500));
@@ -456,7 +522,7 @@ class _OcrScreenState extends State<OcrScreen> {
 
       if (albums.isEmpty) {
         await _speakWithPlayer(
-          'Mình chưa thấy ảnh nào trong thư viện.',
+          'MĂ¬nh chÆ°a tháº¥y áº£nh nĂ o trong thÆ° viá»‡n.',
           title: 'OCR',
         );
         await Future.delayed(const Duration(milliseconds: 500));
@@ -507,8 +573,8 @@ class _OcrScreenState extends State<OcrScreen> {
       if (cameraLike.length <= index) {
         await _speakWithPlayer(
           index == 0
-              ? 'Mình chưa thấy ảnh chụp từ camera đủ mới.'
-              : 'Mình chưa thấy đủ ảnh chụp từ camera để lấy ảnh thứ 2.',
+              ? 'MĂ¬nh chÆ°a tháº¥y áº£nh chá»¥p tá»« camera Ä‘á»§ má»›i.'
+              : 'MĂ¬nh chÆ°a tháº¥y Ä‘á»§ áº£nh chá»¥p tá»« camera Ä‘á»ƒ láº¥y áº£nh thá»© 2.',
           title: 'OCR',
         );
         await Future.delayed(const Duration(milliseconds: 500));
@@ -519,7 +585,7 @@ class _OcrScreenState extends State<OcrScreen> {
       final file = await cameraLike[index].asset.file;
       if (file == null || !file.existsSync()) {
         await _speakWithPlayer(
-          'Mình chưa mở được ảnh chụp từ camera.',
+          'MĂ¬nh chÆ°a má»Ÿ Ä‘Æ°á»£c áº£nh chá»¥p tá»« camera.',
           title: 'OCR',
         );
         await Future.delayed(const Duration(milliseconds: 500));
@@ -530,7 +596,7 @@ class _OcrScreenState extends State<OcrScreen> {
       await _runOcr(file.path);
     } catch (_) {
       await _speakWithPlayer(
-        'Có lỗi khi lấy ảnh từ thư viện.',
+        'CĂ³ lá»—i khi láº¥y áº£nh tá»« thÆ° viá»‡n.',
         title: 'OCR',
       );
       await Future.delayed(const Duration(milliseconds: 500));
@@ -546,7 +612,7 @@ class _OcrScreenState extends State<OcrScreen> {
       _latestImagePath = path;
 
       await _speakWithPlayer(
-        'Đang quét chữ, bạn chờ một chút nhé.',
+        'Äang quĂ©t chá»¯, báº¡n chá» má»™t chĂºt nhĂ©.',
         title: 'OCR',
       );
       // Wait for "processing" message
@@ -555,11 +621,11 @@ class _OcrScreenState extends State<OcrScreen> {
       await _ocr.runOcr(path, speakResult: false);
 
       final result = _ocr.text.trim().isEmpty
-          ? 'Mình chưa nhận diện được văn bản rõ ràng.'
+          ? 'MĂ¬nh chÆ°a nháº­n diá»‡n Ä‘Æ°á»£c vÄƒn báº£n rĂµ rĂ ng.'
           : _ocr.text.trim();
 
       await _reloadHistoryIfNeeded(_ocr.historyId);
-      await _speakWithPlayer(result, title: 'Kết quả OCR');
+      await _speakWithPlayer(result, title: 'Káº¿t quáº£ OCR');
       // Wait for result to finish
       while (_tts.isSpeaking.value && mounted) {
         await Future.delayed(const Duration(milliseconds: 100));
@@ -568,7 +634,7 @@ class _OcrScreenState extends State<OcrScreen> {
       await _askNextAction();
     } catch (_) {
       await _speakWithPlayer(
-        'Có lỗi khi quét chữ. Bạn thử lại nhé.',
+        'CĂ³ lá»—i khi quĂ©t chá»¯. Báº¡n thá»­ láº¡i nhĂ©.',
         title: 'OCR',
       );
       await Future.delayed(const Duration(milliseconds: 600));
@@ -590,15 +656,9 @@ class _OcrScreenState extends State<OcrScreen> {
     } catch (_) {}
   }
 
-  Future<void> _speakWithPlayer(
-      String text, {
-        required String title,
-      }) async {
+  Future<void> _speakWithPlayer(String text, {required String title}) async {
     final value = text.trim();
     if (value.isEmpty) return;
-
-    _lastSpokenTitle = title;
-    _lastSpokenText = value;
 
     final preview = value.length > 88 ? '${value.substring(0, 88)}...' : value;
     _player.setNow(title, preview, newDetails: value);
@@ -638,26 +698,38 @@ class _OcrScreenState extends State<OcrScreen> {
 
   Future<void> _onPlayPause() async {
     if (_tts.isSpeaking.value) {
-      await _tts.stop();
+      await _onStopTts();
+      return;
+    }
+
+    await _replayCurrentPlayerText();
+  }
+
+  String _currentPlayerText() {
+    return _player.replayText;
+  }
+
+  Future<void> _replayCurrentPlayerText() async {
+    final text = _currentPlayerText();
+
+    await _voice.stop();
+    await _tts.stop();
+
+    if (text.trim().isEmpty) {
+      await _tts.speak('Chưa có nội dung để đọc lại.');
+      return;
+    }
+
+    _player.setPlaying(true);
+    try {
+      await _tts.speak(text);
+    } finally {
       _player.setPlaying(false);
-      return;
     }
-
-    if (_lastSpokenText.trim().isEmpty) {
-      await _speakWithPlayer(
-        'Bạn chưa có nội dung để phát lại.',
-        title: 'OCR',
-      );
-      return;
-    }
-
-    await _speakWithPlayer(
-      _lastSpokenText,
-      title: _lastSpokenTitle,
-    );
   }
 
   Future<void> _onStopTts() async {
+    await _voice.stop();
     await _tts.stop();
     _player.setPlaying(false);
   }
@@ -665,7 +737,7 @@ class _OcrScreenState extends State<OcrScreen> {
   String _norm(String s) {
     s = s.toLowerCase().trim();
     const withDia =
-        'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+        'Ă Ă¡áº¡áº£Ă£Ă¢áº§áº¥áº­áº©áº«Äƒáº±áº¯áº·áº³áºµĂ¨Ă©áº¹áº»áº½Ăªá»áº¿á»‡á»ƒá»…Ă¬Ă­á»‹á»‰Ä©Ă²Ă³á»á»ĂµĂ´á»“á»‘á»™á»•á»—Æ¡á»á»›á»£á»Ÿá»¡Ă¹Ăºá»¥á»§Å©Æ°á»«á»©á»±á»­á»¯á»³Ă½á»µá»·á»¹Ä‘';
     const without =
         'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd';
 
@@ -680,15 +752,15 @@ class _OcrScreenState extends State<OcrScreen> {
   String _hintText() {
     switch (_stage) {
       case _OcrStage.waitingSource:
-        return 'Gợi ý: nói “chụp ảnh” hoặc “chọn ảnh từ thư viện”. Hoặc giữ màn hình 2 giây để bật mic.';
+        return 'Gá»£i Ă½: nĂ³i â€œchá»¥p áº£nhâ€ hoáº·c â€œchá»n áº£nh tá»« thÆ° viá»‡nâ€. Hoáº·c giá»¯ mĂ n hĂ¬nh 2 giĂ¢y Ä‘á»ƒ báº­t mic.';
       case _OcrStage.waitingGalleryChoice:
-        return 'Gợi ý: nói “ảnh mới nhất” hoặc “ảnh thứ 2”. Hoặc giữ màn hình 2 giây để bật mic.';
+        return 'Gá»£i Ă½: nĂ³i â€œáº£nh má»›i nháº¥tâ€ hoáº·c â€œáº£nh thá»© 2â€. Hoáº·c giá»¯ mĂ n hĂ¬nh 2 giĂ¢y Ä‘á»ƒ báº­t mic.';
       case _OcrStage.waitingNextAction:
-        return 'Gợi ý: nói “quét lại”, “mô tả ảnh”, “đọc báo”, “lịch sử”, “tác vụ”, “cài đặt”, “trang chủ” hoặc “thoát”. Hoặc giữ màn hình 2 giây để bật mic.';
+        return 'Gá»£i Ă½: nĂ³i â€œquĂ©t láº¡iâ€, â€œmĂ´ táº£ áº£nhâ€, â€œÄ‘á»c bĂ¡oâ€, â€œlá»‹ch sá»­â€, â€œtĂ¡c vá»¥â€, â€œcĂ i Ä‘áº·tâ€, â€œtrang chá»§â€ hoáº·c â€œthoĂ¡tâ€. Hoáº·c giá»¯ mĂ n hĂ¬nh 2 giĂ¢y Ä‘á»ƒ báº­t mic.';
       case _OcrStage.processing:
-        return 'Đang xử lý OCR...';
+        return 'Äang xá»­ lĂ½ OCR...';
       case _OcrStage.idle:
-        return 'Sẵn sàng.';
+        return 'Sáºµn sĂ ng.';
     }
   }
 
@@ -713,7 +785,7 @@ class _OcrScreenState extends State<OcrScreen> {
                     File(_latestImagePath),
                     fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => const _VisionImageErrorBox(
-                      message: 'Không mở được ảnh vừa chọn.',
+                      message: 'KhĂ´ng má»Ÿ Ä‘Æ°á»£c áº£nh vá»«a chá»n.',
                       compact: false,
                     ),
                   ),
@@ -741,8 +813,8 @@ class _OcrScreenState extends State<OcrScreen> {
   Widget _buildVoiceBanner(VoiceController voice) {
     final text = voice.isListening
         ? (voice.lastWords.trim().isEmpty
-        ? 'Đang nghe lệnh...'
-        : 'Đang nghe: ${voice.lastWords}')
+              ? 'Äang nghe lá»‡nh...'
+              : 'Äang nghe: ${voice.lastWords}')
         : _hintText();
 
     return Container(
@@ -750,9 +822,7 @@ class _OcrScreenState extends State<OcrScreen> {
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.cardStroke.withValues(alpha: 0.78),
-        ),
+        border: Border.all(color: AppColors.cardStroke.withValues(alpha: 0.78)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -776,10 +846,7 @@ class _OcrScreenState extends State<OcrScreen> {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
-                color: Colors.black54,
-                height: 1.45,
-              ),
+              style: const TextStyle(color: Colors.black54, height: 1.45),
             ),
           ),
         ],
@@ -794,9 +861,7 @@ class _OcrScreenState extends State<OcrScreen> {
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: AppColors.cardStroke.withValues(alpha: 0.80),
-        ),
+        border: Border.all(color: AppColors.cardStroke.withValues(alpha: 0.80)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -807,18 +872,15 @@ class _OcrScreenState extends State<OcrScreen> {
               children: [
                 const Expanded(
                   child: Text(
-                    'Ảnh vừa quét',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                    ),
+                    'áº¢nh vá»«a quĂ©t',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
                   ),
                 ),
                 if (hasImage)
                   TextButton.icon(
                     onPressed: _openImagePreviewDialog,
                     icon: const Icon(Icons.open_in_full_rounded, size: 18),
-                    label: const Text('Xem lớn'),
+                    label: const Text('Xem lá»›n'),
                   ),
               ],
             ),
@@ -835,22 +897,23 @@ class _OcrScreenState extends State<OcrScreen> {
                   aspectRatio: 4 / 3,
                   child: hasImage
                       ? GestureDetector(
-                    onTap: _openImagePreviewDialog,
-                    child: Image.file(
-                      File(_latestImagePath),
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) =>
-                      const _VisionImageErrorBox(
-                        message: 'Không mở được ảnh vừa chọn.',
-                      ),
-                    ),
-                  )
+                          onTap: _openImagePreviewDialog,
+                          child: Image.file(
+                            File(_latestImagePath),
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) =>
+                                const _VisionImageErrorBox(
+                                  message:
+                                      'KhĂ´ng má»Ÿ Ä‘Æ°á»£c áº£nh vá»«a chá»n.',
+                                ),
+                          ),
+                        )
                       : const _VisionPlaceholderBox(
-                    icon: Icons.photo_outlined,
-                    title: 'Chưa có ảnh',
-                    subtitle:
-                    'Ảnh bạn chụp hoặc chọn sẽ hiện lớn tại đây.',
-                  ),
+                          icon: Icons.photo_outlined,
+                          title: 'ChÆ°a cĂ³ áº£nh',
+                          subtitle:
+                              'áº¢nh báº¡n chá»¥p hoáº·c chá»n sáº½ hiá»‡n lá»›n táº¡i Ä‘Ă¢y.',
+                        ),
                 ),
               ),
             ),
@@ -867,9 +930,7 @@ class _OcrScreenState extends State<OcrScreen> {
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: AppColors.cardStroke.withValues(alpha: 0.82),
-        ),
+        border: Border.all(color: AppColors.cardStroke.withValues(alpha: 0.82)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
@@ -880,27 +941,22 @@ class _OcrScreenState extends State<OcrScreen> {
               children: [
                 const Expanded(
                   child: Text(
-                    'Kết quả OCR',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                    ),
+                    'Káº¿t quáº£ OCR',
+                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
                   ),
                 ),
                 IconButton(
                   onPressed: result.isEmpty
                       ? null
-                      : () => _speakWithPlayer(
-                    result,
-                    title: 'Kết quả OCR',
-                  ),
+                      : () =>
+                            _speakWithPlayer(result, title: 'Káº¿t quáº£ OCR'),
                   icon: const Icon(Icons.volume_up_rounded),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             const Text(
-              'Hiển thị toàn bộ văn bản đã quét. Bạn có thể chọn để sao chép hoặc nghe lại.',
+              'Hiá»ƒn thá»‹ toĂ n bá»™ vÄƒn báº£n Ä‘Ă£ quĂ©t. Báº¡n cĂ³ thá»ƒ chá»n Ä‘á»ƒ sao chĂ©p hoáº·c nghe láº¡i.',
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.black54,
@@ -919,7 +975,7 @@ class _OcrScreenState extends State<OcrScreen> {
                 ),
               ),
               child: SelectableText(
-                result.isEmpty ? '(Trống)' : result,
+                result.isEmpty ? '(Trá»‘ng)' : result,
                 style: const TextStyle(
                   fontSize: 16,
                   height: 1.65,
@@ -943,14 +999,12 @@ class _OcrScreenState extends State<OcrScreen> {
       onTriggered: _onHoldToListen,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Quét chữ (OCR)'),
+          title: const Text('QuĂ©t chá»¯ (OCR)'),
           actions: [
             IconButton(
               onPressed: _toggleMic,
               icon: Icon(
-                voice.isListening
-                    ? Icons.mic_rounded
-                    : Icons.mic_none_rounded,
+                voice.isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
               ),
             ),
           ],
@@ -970,9 +1024,7 @@ class _OcrScreenState extends State<OcrScreen> {
             if (c.loading)
               Container(
                 color: Colors.black.withValues(alpha: 0.14),
-                child: const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                child: const Center(child: CircularProgressIndicator()),
               ),
             Positioned(
               left: 16,
@@ -996,7 +1048,7 @@ class _OcrScreenState extends State<OcrScreen> {
                     Expanded(
                       child: _ActionButton(
                         icon: Icons.camera_alt_rounded,
-                        text: 'Chụp ảnh để quét',
+                        text: 'Chá»¥p áº£nh Ä‘á»ƒ quĂ©t',
                         filled: true,
                         onTap: c.loading ? null : _openCameraCaptureFlow,
                       ),
@@ -1005,7 +1057,7 @@ class _OcrScreenState extends State<OcrScreen> {
                     Expanded(
                       child: _ActionButton(
                         icon: Icons.photo_library_rounded,
-                        text: 'Chọn ảnh từ thư viện',
+                        text: 'Chá»n áº£nh tá»« thÆ° viá»‡n',
                         filled: false,
                         onTap: c.loading ? null : _pickFromGalleryManual,
                       ),
@@ -1021,6 +1073,7 @@ class _OcrScreenState extends State<OcrScreen> {
                 child: PlayerSlidingPanel(
                   onPlayPause: _onPlayPause,
                   onStop: _onStopTts,
+                  onReplay: _replayCurrentPlayerText,
                   onMic: _toggleMic,
                 ),
               ),
@@ -1055,7 +1108,7 @@ class _VisionPlaceholderBox extends StatelessWidget {
           Icon(icon, size: 40, color: AppColors.brandBrown),
           const SizedBox(height: 12),
           const Text(
-            'Chưa có ảnh',
+            'ChÆ°a cĂ³ áº£nh',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 18,
@@ -1067,10 +1120,7 @@ class _VisionPlaceholderBox extends StatelessWidget {
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.black54,
-              height: 1.45,
-            ),
+            style: const TextStyle(color: Colors.black54, height: 1.45),
           ),
         ],
       ),
@@ -1082,10 +1132,7 @@ class _VisionImageErrorBox extends StatelessWidget {
   final String message;
   final bool compact;
 
-  const _VisionImageErrorBox({
-    required this.message,
-    this.compact = true,
-  });
+  const _VisionImageErrorBox({required this.message, this.compact = true});
 
   @override
   Widget build(BuildContext context) {
@@ -1158,10 +1205,7 @@ class _ActionButton extends StatelessWidget {
                   child: Text(
                     text,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: fg,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(color: fg, fontWeight: FontWeight.w800),
                   ),
                 ),
               ],
@@ -1177,8 +1221,5 @@ class _RankedAsset {
   final AssetEntity asset;
   final int priority;
 
-  const _RankedAsset({
-    required this.asset,
-    required this.priority,
-  });
+  const _RankedAsset({required this.asset, required this.priority});
 }

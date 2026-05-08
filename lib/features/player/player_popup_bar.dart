@@ -2,15 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_icons.dart';
-import '../../core/widgets/app_icon.dart';
-import '../voice/voice_controller.dart';
 import '../../core/tts/tts_service.dart';
+import '../voice/voice_controller.dart';
 import 'player_controller.dart';
 import 'player_settings_sheet.dart';
 
 class PlayerPopupBar extends StatelessWidget {
-  final VoidCallback onOpenList; // mở danh sách (history/news list)
+  final VoidCallback onOpenList;
   final Future<void> Function() onPlayPause;
   final Future<void> Function() onStop;
   final Future<void> Function() onMic;
@@ -23,9 +21,35 @@ class PlayerPopupBar extends StatelessWidget {
     required this.onMic,
   });
 
+  String _currentText(PlayerController player) {
+    return player.replayText;
+  }
+
+  Future<void> _replay(BuildContext context) async {
+    final player = context.read<PlayerController>();
+    final tts = context.read<TtsService>();
+    final voice = context.read<VoiceController>();
+    final text = _currentText(player);
+
+    await voice.stop();
+    await tts.stop();
+
+    if (text.isEmpty) {
+      await tts.speak('Chưa có nội dung để đọc lại.');
+      return;
+    }
+
+    player.setPlaying(true);
+    try {
+      await tts.speak(text);
+    } finally {
+      player.setPlaying(false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final pc = context.watch<PlayerController>();
+    final player = context.watch<PlayerController>();
 
     return SafeArea(
       top: false,
@@ -34,76 +58,140 @@ class PlayerPopupBar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: AppColors.brandBrown,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: const [
-            BoxShadow(blurRadius: 12, offset: Offset(0, 6), color: Colors.black26),
+            BoxShadow(
+              blurRadius: 12,
+              offset: Offset(0, 6),
+              color: Colors.black26,
+            ),
           ],
         ),
         child: Row(
           children: [
-            // Left: Title + subtitle
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    pc.title,
+                    player.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    pc.subtitle,
+                    player.subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white70),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.78),
+                      fontSize: 13.5,
+                    ),
                   ),
                 ],
               ),
             ),
-
-            // Controls
-            IconButton(
-              tooltip: "Dừng",
-              onPressed: () => onStop(),
-              icon: const Icon(Icons.stop, color: Colors.white),
+            const SizedBox(width: 10),
+            _PopupActionButton(
+              icon: Icons.stop_rounded,
+              label: 'Dừng',
+              tooltip: 'Dừng đọc',
+              onPressed: onStop,
+              filled: true,
             ),
-
-            IconButton(
-              tooltip: pc.isPlaying ? "Tạm dừng" : "Phát",
-              onPressed: () => onPlayPause(),
-              icon: Icon(pc.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+            const SizedBox(width: 8),
+            _PopupActionButton(
+              icon: Icons.replay_rounded,
+              label: 'Đọc lại',
+              tooltip: 'Đọc lại nội dung',
+              onPressed: () => _replay(context),
             ),
-
             IconButton(
-              tooltip: pc.isListening ? "Dừng mic" : "Bật mic",
-              onPressed: () => onMic(),
-              icon: Icon(pc.isListening ? Icons.mic : Icons.mic_none, color: Colors.white),
+              tooltip: player.isPlaying ? 'Tạm dừng' : 'Tiếp tục',
+              onPressed: onPlayPause,
+              icon: Icon(
+                player.isPlaying
+                    ? Icons.pause_circle_rounded
+                    : Icons.play_circle_rounded,
+                color: Colors.white,
+              ),
             ),
-
             IconButton(
-              tooltip: pc.repeat ? "Tắt lặp" : "Lặp lại",
-              onPressed: () => context.read<PlayerController>().toggleRepeat(),
-              icon: Icon(pc.repeat ? Icons.repeat_one : Icons.repeat, color: Colors.white),
-            ),
-
-            IconButton(
-              tooltip: "Danh sách",
+              tooltip: 'Mở rộng',
               onPressed: onOpenList,
-              icon: const Icon(Icons.queue_music, color: Colors.white),
+              icon: const Icon(Icons.keyboard_arrow_up_rounded),
+              color: Colors.white,
             ),
-
             IconButton(
-              tooltip: "Cài đặt giọng đọc",
+              tooltip: 'Cài đặt giọng đọc',
               onPressed: () => showModalBottomSheet(
                 context: context,
                 showDragHandle: true,
                 builder: (_) => const PlayerSettingsSheet(),
               ),
-              icon: const Icon(Icons.settings, color: Colors.white),
+              icon: const Icon(Icons.settings_rounded),
+              color: Colors.white,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PopupActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final bool filled;
+
+  const _PopupActionButton({
+    required this.icon,
+    required this.label,
+    required this.tooltip,
+    required this.onPressed,
+    this.filled = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final background = filled
+        ? Colors.white
+        : Colors.white.withValues(alpha: 0.12);
+    final foreground = filled ? AppColors.brandBrown : Colors.white;
+
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: SizedBox(
+          height: 42,
+          child: TextButton.icon(
+            style: TextButton.styleFrom(
+              backgroundColor: background,
+              foregroundColor: foreground,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            onPressed: onPressed,
+            icon: Icon(icon, size: 18),
+            label: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
         ),
       ),
     );

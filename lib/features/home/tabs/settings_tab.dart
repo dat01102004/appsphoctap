@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/tts/tts_service.dart';
+import '../../../core/voice/global_voice_intent.dart';
 import '../../../core/widgets/hold_to_listen_layer.dart';
 import '../../auth/auth_controller.dart';
 import '../../auth/edit_profile_screen.dart';
@@ -104,16 +105,16 @@ class _SettingsTabState extends State<SettingsTab> {
     if (auth.loggedIn) {
       await _speak(
         'Màn hình cài đặt. '
-            'Xin chào ${auth.displayName}. '
-            'Bạn có thể đổi thông tin người dùng, chỉnh tốc độ đọc, độ cao giọng, '
-            'chọn giọng đọc, nghe thử hoặc đăng xuất. '
-            'Có thể nói: đổi thông tin, nghe thử, tốc độ nhanh, giọng thấp, đăng xuất.',
+        'Xin chào ${auth.displayName}. '
+        'Bạn có thể đổi thông tin người dùng, chỉnh tốc độ đọc, độ cao giọng, '
+        'chọn giọng đọc, nghe thử hoặc đăng xuất. '
+        'Có thể nói: đổi thông tin, nghe thử, tốc độ nhanh, giọng thấp, đăng xuất.',
       );
     } else {
       await _speak(
         'Màn hình cài đặt. '
-            'Bạn đang ở chế độ khách. '
-            'Bạn có thể đăng nhập, đăng ký, chỉnh tốc độ đọc, chọn giọng đọc và nghe thử.',
+        'Bạn đang ở chế độ khách. '
+        'Bạn có thể đăng nhập, đăng ký, chỉnh tốc độ đọc, chọn giọng đọc và nghe thử.',
       );
     }
   }
@@ -154,6 +155,9 @@ class _SettingsTabState extends State<SettingsTab> {
   }
 
   Future<void> _handleVoice(String raw) async {
+    final handledGlobal = await _handleGlobalVoiceIntent(raw);
+    if (handledGlobal) return;
+
     final n = _norm(raw);
     final auth = context.read<AuthController>();
     final tts = context.read<TtsService>();
@@ -284,9 +288,7 @@ class _SettingsTabState extends State<SettingsTab> {
     final rateValue = _extractDecimalValue(n);
 
     if (rateValue != null &&
-        (n.contains('toc do') ||
-            n.contains('rate') ||
-            n.contains('van toc'))) {
+        (n.contains('toc do') || n.contains('rate') || n.contains('van toc'))) {
       final clamped = rateValue.clamp(0.2, 0.8).toDouble();
       await _setRate(clamped, speakBack: true);
       return;
@@ -295,9 +297,7 @@ class _SettingsTabState extends State<SettingsTab> {
     final pitchValue = _extractDecimalValue(n);
 
     if (pitchValue != null &&
-        (n.contains('do cao') ||
-            n.contains('pitch') ||
-            n.contains('giong'))) {
+        (n.contains('do cao') || n.contains('pitch') || n.contains('giong'))) {
       final clamped = pitchValue.clamp(0.7, 1.5).toDouble();
       await _setPitch(clamped, speakBack: true);
       return;
@@ -323,9 +323,50 @@ class _SettingsTabState extends State<SettingsTab> {
 
     await _speak(
       'Mình chưa hiểu lệnh. '
-          'Bạn có thể nói: đổi thông tin, nghe thử, tốc độ nhanh, giọng thấp, '
-          'chọn giọng 1, đăng nhập, đăng ký hoặc đăng xuất.',
+      'Bạn có thể nói: đổi thông tin, nghe thử, tốc độ nhanh, giọng thấp, '
+      'chọn giọng 1, đăng nhập, đăng ký hoặc đăng xuất.',
     );
+  }
+
+  Future<bool> _handleGlobalVoiceIntent(String raw) async {
+    final intent = GlobalVoiceIntentParser.parse(raw);
+    final tts = context.read<TtsService>();
+    final voice = context.read<VoiceController>();
+
+    switch (intent) {
+      case GlobalVoiceIntent.stopReading:
+        await voice.stop();
+        await tts.stop();
+        return true;
+      case GlobalVoiceIntent.repeatReading:
+        _lastAnnounceMode = '';
+        await _announceByState();
+        return true;
+      case GlobalVoiceIntent.home:
+      case GlobalVoiceIntent.back:
+        await voice.stop();
+        await tts.stop();
+        await _speak(
+          'Báº¡n cĂ³ thá»ƒ dĂ¹ng thanh Ä‘iá»u hÆ°á»›ng Ä‘á»ƒ vá» trang chá»§.',
+        );
+        return true;
+      case GlobalVoiceIntent.settings:
+        _lastAnnounceMode = '';
+        await _announceByState();
+        return true;
+      case GlobalVoiceIntent.history:
+      case GlobalVoiceIntent.caption:
+      case GlobalVoiceIntent.ocr:
+      case GlobalVoiceIntent.news:
+        await voice.stop();
+        await tts.stop();
+        await _speak(
+          'Báº¡n cĂ³ thá»ƒ dĂ¹ng thanh Ä‘iá»u hÆ°á»›ng hoáº·c vá» trang chá»§ Ä‘á»ƒ má»Ÿ chá»©c nÄƒng nĂ y.',
+        );
+        return true;
+      case GlobalVoiceIntent.none:
+        return false;
+    }
   }
 
   Future<void> _openChangeUser() async {
@@ -334,7 +375,7 @@ class _SettingsTabState extends State<SettingsTab> {
     if (!auth.loggedIn) {
       await _speak(
         'Bạn đang ở chế độ khách. '
-            'Hãy đăng nhập trước để thay đổi thông tin người dùng.',
+        'Hãy đăng nhập trước để thay đổi thông tin người dùng.',
       );
       return;
     }
@@ -479,21 +520,23 @@ class _SettingsTabState extends State<SettingsTab> {
 
     await _speak(
       'Đây là giọng đọc thử của Mắt Nói. '
-          'Tốc độ hiện tại là $rate. '
-          'Độ cao giọng là $pitch. '
-          '${voiceName != null && voiceName.isNotEmpty ? "Tên giọng hiện tại là $voiceName." : ""}',
+      'Tốc độ hiện tại là $rate. '
+      'Độ cao giọng là $pitch. '
+      '${voiceName != null && voiceName.isNotEmpty ? "Tên giọng hiện tại là $voiceName." : ""}',
     );
   }
 
   String _norm(String input) {
     var s = input.toLowerCase().trim();
 
-    const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
+    const from =
+        'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
         'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ'
         'ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨ'
         'ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ';
 
-    const to = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
+    const to =
+        'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
         'ooooooooooooooooouuuuuuuuuuuyyyyyd'
         'AAAAAAAAAAAAAAAAAEEEEEEEEEEEIIIII'
         'OOOOOOOOOOOOOOOOOUUUUUUUUUUUYYYYYD';
@@ -525,10 +568,7 @@ class _SettingsTabState extends State<SettingsTab> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFA67A2D),
-            Color(0xFF7B551C),
-          ],
+          colors: [Color(0xFFA67A2D), Color(0xFF7B551C)],
         ),
         boxShadow: [
           BoxShadow(
@@ -773,8 +813,8 @@ class _SettingsTabState extends State<SettingsTab> {
                   Text(
                     voice.isListening
                         ? (voice.lastWords.trim().isEmpty
-                        ? 'Đang nghe...'
-                        : voice.lastWords.trim())
+                              ? 'Đang nghe...'
+                              : voice.lastWords.trim())
                         : 'Nhấn mic hoặc giữ màn hình 2 giây để điều khiển. Có thể nói: đổi thông tin, nghe thử, tốc độ nhanh, giọng thấp.',
                     style: const TextStyle(
                       fontSize: 13.5,
@@ -1236,10 +1276,7 @@ class _GlassInfoPill extends StatelessWidget {
   final IconData icon;
   final String text;
 
-  const _GlassInfoPill({
-    required this.icon,
-    required this.text,
-  });
+  const _GlassInfoPill({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -1249,17 +1286,11 @@ class _GlassInfoPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.14),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.22),
-        ),
+        border: Border.all(color: Colors.white.withOpacity(0.22)),
       ),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: Colors.white,
-            size: 17,
-          ),
+          Icon(icon, color: Colors.white, size: 17),
           const SizedBox(width: 7),
           Expanded(
             child: Text(
@@ -1311,11 +1342,7 @@ class _SliderRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(
-                icon,
-                color: AppColors.brandBrown,
-                size: 21,
-              ),
+              Icon(icon, color: AppColors.brandBrown, size: 21),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(

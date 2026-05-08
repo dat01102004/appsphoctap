@@ -24,6 +24,7 @@ import 'tabs/settings_tab.dart';
 import 'tabs/tasks_tab.dart';
 import 'widgets/talksight_app_bar.dart';
 import 'widgets/talksight_bottom_bar.dart';
+import '../../core/voice/global_voice_intent.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,7 +40,6 @@ class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
   bool _greeted = false;
 
-  String _lastSpokenText = '';
   String _lastSpokenTitle = 'MẮT NÓI';
   String _lastPromptNorm = '';
 
@@ -68,10 +68,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _say(
-        'Xin chào bạn! Hôm nay bạn muốn sử dụng tính năng gì? '
-            'Bạn có thể nói: quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh.',
-        title: 'MẮT NÓI',
+        'Xin chào, mình là Mắt Nói. '
+        'Bạn có thể nói: mô tả xung quanh, đọc chữ, đọc báo, hoặc cài đặt. '
+        'Giữ màn hình 2 giây để ra lệnh.',
+        title: 'Mắt Nói',
       );
+
       await _startVoiceOnce();
     });
   }
@@ -117,25 +119,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _say(
-      String text, {
-        String? title,
-      }) async {
+  Future<void> _say(String text, {String? title}) async {
     final tts = context.read<TtsService>();
     final voice = context.read<VoiceController>();
     final player = context.read<PlayerController>();
 
-    _lastSpokenText = text;
     _lastSpokenTitle = title ?? _lastSpokenTitle;
     _lastPromptNorm = _norm(text);
 
     final preview = text.length > 84 ? '${text.substring(0, 84)}...' : text;
 
-    player.setNow(
-      _lastSpokenTitle,
-      preview,
-      newDetails: text,
-    );
+    player.setNow(_lastSpokenTitle, preview, newDetails: text);
     player.setPlaying(true);
 
     try {
@@ -221,11 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await tts.stop();
 
-    player.setNow(
-      _lastSpokenTitle,
-      'Đang nghe...',
-      newDetails: 'Đang nghe...',
-    );
+    player.setNow(_lastSpokenTitle, 'Đang nghe...', newDetails: 'Đang nghe...');
 
     await _startVoiceOnce();
   }
@@ -247,10 +237,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final prompt = _buildHomeResumePrompt();
       _homeResumePromptCount++;
 
-      await _say(
-        prompt,
-        title: 'MẮT NÓI',
-      );
+      await _say(prompt, title: 'MẮT NÓI');
 
       if (!mounted || _index != 0) return;
       await Future.delayed(const Duration(milliseconds: 250));
@@ -345,7 +332,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _openRegisterScreen({bool resumeHomeVoiceIfReturn = true}) async {
+  Future<void> _openRegisterScreen({
+    bool resumeHomeVoiceIfReturn = true,
+  }) async {
     if (!mounted) return;
 
     _listenEpoch++;
@@ -479,6 +468,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case LiveVisionAction.ocr:
         await _openOcrScreen();
         return;
+      case LiveVisionAction.caption:
+        await _openCaptionScreen();
+        return;
       case LiveVisionAction.history:
         await _goHistory();
         return;
@@ -517,11 +509,69 @@ class _HomeScreenState extends State<HomeScreen> {
         text.contains('thoat tai khoan');
   }
 
+  Future<bool> _handleGlobalVoiceIntent(String raw) async {
+    final intent = GlobalVoiceIntentParser.parse(raw);
+
+    switch (intent) {
+      case GlobalVoiceIntent.home:
+        await _goHome();
+        return true;
+
+      case GlobalVoiceIntent.back:
+        if (_index == 0) {
+          await _say('Bạn đang ở trang chủ rồi.', title: 'MẮT NÓI');
+          await _startVoiceOnce();
+        } else {
+          await _goHome();
+        }
+        return true;
+
+      case GlobalVoiceIntent.stopReading:
+        await _onStopTts();
+        return true;
+
+      case GlobalVoiceIntent.repeatReading:
+        await _replayCurrentPlayerText();
+        return true;
+
+      case GlobalVoiceIntent.settings:
+        await _goSettings();
+        return true;
+
+      case GlobalVoiceIntent.history:
+        await _goHistory();
+        return true;
+
+      case GlobalVoiceIntent.caption:
+        await _say('Mở mô tả ảnh.', title: 'Mô tả ảnh');
+        if (!mounted) return true;
+        await _openCaptionScreen();
+        return true;
+
+      case GlobalVoiceIntent.ocr:
+        await _say('Mở đọc chữ.', title: 'Đọc chữ');
+        if (!mounted) return true;
+        await _openOcrScreen();
+        return true;
+
+      case GlobalVoiceIntent.news:
+        await _say('Mở trợ lý đọc báo.', title: 'Đọc báo');
+        if (!mounted) return true;
+        await _openNewsScreen();
+        return true;
+
+      case GlobalVoiceIntent.none:
+        return false;
+    }
+  }
+
   Future<void> _handleVoiceCommand(String raw) async {
     final news = context.read<NewsAssistantController>();
     final auth = context.read<AuthController>();
     final tts = context.read<TtsService>();
     final text = _norm(raw);
+    final handledGlobal = await _handleGlobalVoiceIntent(raw);
+    if (handledGlobal) return;
 
     if (text.contains('toc do nhanh')) {
       final newRate = (tts.rate + 0.1).clamp(0.1, 1.0);
@@ -554,7 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (text.contains('giong nam') || text.contains('doi sang giong nam')) {
       final voices = await tts.getVoices();
       final maleVoice = voices.firstWhere(
-            (v) {
+        (v) {
           final name = v['name'].toString().toLowerCase();
           final locale = v['locale'].toString().toLowerCase();
           return locale.contains('vi') &&
@@ -566,7 +616,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   name.contains('trung'));
         },
         orElse: () => voices.firstWhere(
-              (v) => v['locale'].toString().toLowerCase().contains('vi'),
+          (v) => v['locale'].toString().toLowerCase().contains('vi'),
           orElse: () => voices.first,
         ),
       );
@@ -579,7 +629,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (text.contains('giong nu') || text.contains('doi sang giong nu')) {
       final voices = await tts.getVoices();
       final femaleVoice = voices.firstWhere(
-            (v) {
+        (v) {
           final name = v['name'].toString().toLowerCase();
           final locale = v['locale'].toString().toLowerCase();
           return locale.contains('vi') &&
@@ -591,7 +641,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   name.contains('vic'));
         },
         orElse: () => voices.firstWhere(
-              (v) => v['locale'].toString().toLowerCase().contains('vi'),
+          (v) => v['locale'].toString().toLowerCase().contains('vi'),
           orElse: () => voices.first,
         ),
       );
@@ -660,14 +710,18 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      await _say('Ok, mình mở màn hình đăng nhập tài khoản.', title: 'Đăng nhập');
+      await _say(
+        'Ok, mình mở màn hình đăng nhập tài khoản.',
+        title: 'Đăng nhập',
+      );
 
       if (!mounted) return;
       await _openLoginScreen();
       return;
     }
 
-    final isNewsCmd = text.contains('doc web') ||
+    final isNewsCmd =
+        text.contains('doc web') ||
         text.contains('doc bao') ||
         text.contains('tin tuc') ||
         text.contains('bao moi') ||
@@ -781,9 +835,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final action = await Navigator.push<String>(
       context,
-      MaterialPageRoute(
-        builder: (_) => const LiveVisionScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const LiveVisionScreen()),
     );
 
     if (!mounted) return;
@@ -792,28 +844,47 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _onPlayPause() async {
     final player = context.read<PlayerController>();
-    final tts = context.read<TtsService>();
 
     if (player.isPlaying) {
-      await tts.stop();
-      player.setPlaying(false);
-      player.setNow(_lastSpokenTitle, 'Đã dừng');
+      await _onStopTts();
       return;
     }
 
-    if (_lastSpokenText.trim().isEmpty) {
-      await _say('Bạn chưa có nội dung để phát lại.', title: 'MẮT NÓI');
-      return;
-    }
-
-    await _say(_lastSpokenText, title: _lastSpokenTitle);
+    await _replayCurrentPlayerText();
   }
 
   Future<void> _onStopTts() async {
     final player = context.read<PlayerController>();
+    await context.read<VoiceController>().stop();
     await context.read<TtsService>().stop();
     player.setPlaying(false);
     player.setNow(_lastSpokenTitle, 'Đã dừng');
+  }
+
+  String _currentPlayerText() {
+    return context.read<PlayerController>().replayText;
+  }
+
+  Future<void> _replayCurrentPlayerText() async {
+    final player = context.read<PlayerController>();
+    final tts = context.read<TtsService>();
+    final voice = context.read<VoiceController>();
+    final text = _currentPlayerText();
+
+    await voice.stop();
+    await tts.stop();
+
+    if (text.isEmpty || text == 'Đã dừng' || text == 'Sẵn sàng') {
+      await tts.speak('Chưa có nội dung để đọc lại.');
+      return;
+    }
+
+    player.setPlaying(true);
+    try {
+      await tts.speak(text);
+    } finally {
+      player.setPlaying(false);
+    }
   }
 
   Future<void> _onMicFromPanel() async {
@@ -867,10 +938,7 @@ class _HomeScreenState extends State<HomeScreen> {
         body: Stack(
           children: [
             SafeArea(
-              child: IndexedStack(
-                index: _index,
-                children: pages,
-              ),
+              child: IndexedStack(index: _index, children: pages),
             ),
             Positioned.fill(
               bottom: _playerBottomOffset,
@@ -879,6 +947,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: PlayerSlidingPanel(
                   onPlayPause: _onPlayPause,
                   onStop: _onStopTts,
+                  onReplay: _replayCurrentPlayerText,
                   onMic: _onMicFromPanel,
                 ),
               ),

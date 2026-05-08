@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_icons.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_intent.dart';
 import '../../core/widgets/app_icon.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
 import '../../data/services/read_api.dart';
@@ -122,9 +123,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
 
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => NewsArticleScreen(article: article),
-      ),
+      MaterialPageRoute(builder: (_) => NewsArticleScreen(article: article)),
     );
 
     if (!mounted) return;
@@ -214,6 +213,70 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
       case AppVoiceIntent.stop:
         await _stopNewsSilently();
         break;
+
+      case AppVoiceIntent.back:
+        await _stopNewsSilently();
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        break;
+
+      case AppVoiceIntent.repeat:
+        await _news.startTop();
+        break;
+    }
+  }
+
+  // ignore: unused_element
+  Future<bool> _handleGlobalVoiceIntent(String raw) async {
+    final intent = GlobalVoiceIntentParser.parse(raw);
+
+    switch (intent) {
+      case GlobalVoiceIntent.stopReading:
+        await _stopNewsSilently();
+        return true;
+      case GlobalVoiceIntent.repeatReading:
+        await _news.startTop();
+        return true;
+      case GlobalVoiceIntent.back:
+        await _stopNewsSilently();
+        if (!mounted) return true;
+        Navigator.of(context).pop();
+        return true;
+      case GlobalVoiceIntent.home:
+        await _popToRoot();
+        if (widget.onGoHome != null) {
+          await widget.onGoHome!();
+        }
+        return true;
+      case GlobalVoiceIntent.settings:
+        await _popToRoot();
+        if (widget.onGoSettings != null) {
+          await widget.onGoSettings!();
+        }
+        return true;
+      case GlobalVoiceIntent.history:
+        await _popToRoot();
+        if (widget.onGoHistory != null) {
+          await widget.onGoHistory!();
+        }
+        return true;
+      case GlobalVoiceIntent.ocr:
+        await _popToRoot();
+        if (widget.onOpenOcr != null) {
+          await widget.onOpenOcr!();
+        }
+        return true;
+      case GlobalVoiceIntent.caption:
+        await _popToRoot();
+        if (widget.onOpenCaption != null) {
+          await widget.onOpenCaption!();
+        }
+        return true;
+      case GlobalVoiceIntent.news:
+        await _news.startTop();
+        return true;
+      case GlobalVoiceIntent.none:
+        return false;
     }
   }
 
@@ -325,8 +388,9 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                           label: const Text('Tin mới'),
                           selected: _tab == 0,
                           onSelected: (_) => setState(() => _tab = 0),
-                          selectedColor:
-                          AppColors.cardStroke.withValues(alpha: 0.55),
+                          selectedColor: AppColors.cardStroke.withValues(
+                            alpha: 0.55,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -335,8 +399,9 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                           label: const Text('Dán URL'),
                           selected: _tab == 1,
                           onSelected: (_) => setState(() => _tab = 1),
-                          selectedColor:
-                          AppColors.cardStroke.withValues(alpha: 0.55),
+                          selectedColor: AppColors.cardStroke.withValues(
+                            alpha: 0.55,
+                          ),
                         ),
                       ),
                     ],
@@ -352,7 +417,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                             controller: _q,
                             decoration: InputDecoration(
                               hintText:
-                              'Tìm tin theo chủ đề (VD: bóng đá, kinh tế...)',
+                                  'Tìm tin theo chủ đề (VD: bóng đá, kinh tế...)',
                               filled: true,
                               fillColor: AppColors.card,
                               border: OutlineInputBorder(
@@ -433,8 +498,9 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                         return Card(
                           child: ListTile(
                             leading: CircleAvatar(
-                              backgroundColor:
-                              AppColors.cardStroke.withValues(alpha: 0.5),
+                              backgroundColor: AppColors.cardStroke.withValues(
+                                alpha: 0.5,
+                              ),
                               child: Text(
                                 '${i + 1}',
                                 style: const TextStyle(
@@ -451,8 +517,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                             subtitle: subtitleParts.isEmpty
                                 ? null
                                 : Text(subtitleParts.join(' • ')),
-                            trailing:
-                            const Icon(Icons.chevron_right_rounded),
+                            trailing: const Icon(Icons.chevron_right_rounded),
                             onTap: () => news.readIndex(i),
                           ),
                         );
@@ -499,8 +564,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                                       foregroundColor: Colors.white,
                                     ),
                                     onPressed: _readUrlManual,
-                                    icon:
-                                    const Icon(Icons.volume_up_rounded),
+                                    icon: const Icon(Icons.volume_up_rounded),
                                     label: const Text('Tóm tắt & Đọc'),
                                   ),
                                 ),

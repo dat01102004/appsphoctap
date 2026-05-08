@@ -5,13 +5,23 @@ class PlayerController extends ChangeNotifier {
   bool isListening = false;
   bool repeat = false;
 
-  String title = 'TalkSight';
+  String title = 'Mắt Nói';
   String subtitle = 'Sẵn sàng';
 
   /// Nội dung đầy đủ đang đọc / đang nghe
   String details = '';
 
   bool get hasDetails => details.trim().isNotEmpty;
+
+  String get replayText {
+    final full = details.trim();
+    if (full.isNotEmpty) return full;
+
+    final preview = subtitle.trim();
+    if (preview.isNotEmpty) return preview;
+
+    return title.trim();
+  }
 
   void setPlaying(bool value) {
     if (isPlaying == value) return;
@@ -29,16 +39,14 @@ class PlayerController extends ChangeNotifier {
     repeat = !repeat;
     notifyListeners();
   }
+
   void setRepeat(bool value) {
     if (repeat == value) return;
     repeat = value;
     notifyListeners();
   }
-  void setNow(
-      String newTitle,
-      String newSubtitle, {
-        String? newDetails,
-      }) {
+
+  void setNow(String newTitle, String newSubtitle, {String? newDetails}) {
     title = newTitle;
     subtitle = newSubtitle;
 
@@ -55,7 +63,7 @@ class PlayerController extends ChangeNotifier {
     isPlaying = false;
     isListening = false;
     repeat = false;
-    title = 'TalkSight';
+    title = 'Mắt Nói';
     subtitle = 'Sẵn sàng';
     details = '';
     notifyListeners();

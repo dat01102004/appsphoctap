@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_intent.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
 import '../voice/voice_controller.dart';
 import 'read_url_controller.dart';
@@ -32,8 +33,8 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
 
       await _speak(
         'Màn hình đọc đường dẫn. '
-            'Bạn có thể dán link bài viết rồi bấm đọc và tóm tắt. '
-            'Hoặc giữ màn hình 2 giây để ra lệnh bằng giọng nói.',
+        'Bạn có thể dán link bài viết rồi bấm đọc và tóm tắt. '
+        'Hoặc giữ màn hình 2 giây để ra lệnh bằng giọng nói.',
       );
     });
   }
@@ -86,14 +87,18 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
     }
 
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      await _speak('Đường dẫn chưa đúng. URL nên bắt đầu bằng hát tê tê pê hoặc hát tê tê pê ét.');
+      await _speak(
+        'Đường dẫn chưa đúng. URL nên bắt đầu bằng hát tê tê pê hoặc hát tê tê pê ét.',
+      );
       return;
     }
 
     try {
       await controller.submit(url);
     } catch (_) {
-      await _speak('Có lỗi khi đọc đường dẫn. Bạn kiểm tra lại URL hoặc thử bài viết khác nhé.');
+      await _speak(
+        'Có lỗi khi đọc đường dẫn. Bạn kiểm tra lại URL hoặc thử bài viết khác nhé.',
+      );
     }
   }
 
@@ -194,7 +199,44 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
     return false;
   }
 
+  Future<bool> _handleGlobalVoiceIntent(String raw) async {
+    final intent = GlobalVoiceIntentParser.parse(raw);
+
+    switch (intent) {
+      case GlobalVoiceIntent.stopReading:
+        await context.read<VoiceController>().stop();
+        await context.read<TtsService>().stop();
+        return true;
+
+      case GlobalVoiceIntent.repeatReading:
+        await _speakResultAgain();
+        return true;
+
+      case GlobalVoiceIntent.back:
+        await _goBack();
+        return true;
+
+      case GlobalVoiceIntent.home:
+      case GlobalVoiceIntent.settings:
+      case GlobalVoiceIntent.history:
+      case GlobalVoiceIntent.caption:
+      case GlobalVoiceIntent.ocr:
+      case GlobalVoiceIntent.news:
+        await context.read<VoiceController>().stop();
+        await context.read<TtsService>().stop();
+        if (!mounted) return true;
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        return true;
+
+      case GlobalVoiceIntent.none:
+        return false;
+    }
+  }
+
   Future<void> _handleVoice(String raw) async {
+    final handledGlobal = await _handleGlobalVoiceIntent(raw);
+    if (handledGlobal) return;
+
     final n = _norm(raw);
 
     if (n.contains('tro ve') ||
@@ -247,19 +289,21 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
 
     await _speak(
       'Mình chưa hiểu lệnh. '
-          'Bạn có thể nói: dán link, đọc và tóm tắt, đọc lại, xoá link hoặc quay lại.',
+      'Bạn có thể nói: dán link, đọc và tóm tắt, đọc lại, xoá link hoặc quay lại.',
     );
   }
 
   String _norm(String input) {
     var s = input.toLowerCase().trim();
 
-    const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
+    const from =
+        'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
         'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ'
         'ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨ'
         'ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ';
 
-    const to = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
+    const to =
+        'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
         'ooooooooooooooooouuuuuuuuuuuyyyyyd'
         'AAAAAAAAAAAAAAAAAEEEEEEEEEEEIIIII'
         'OOOOOOOOOOOOOOOOOUUUUUUUUUUUYYYYYD';
@@ -323,8 +367,8 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
                       _HeroCard(
                         voiceText: voice.isListening
                             ? (voice.lastWords.trim().isEmpty
-                            ? 'Đang nghe lệnh...'
-                            : 'Đang nghe: ${voice.lastWords}')
+                                  ? 'Đang nghe lệnh...'
+                                  : 'Đang nghe: ${voice.lastWords}')
                             : 'Dán link bài viết, rồi bấm đọc và tóm tắt.',
                         onMic: _startVoice,
                       ),
@@ -372,12 +416,12 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
                                   suffixIcon: _url.text.trim().isEmpty
                                       ? null
                                       : IconButton(
-                                    onPressed: _clearUrl,
-                                    icon: const Icon(
-                                      Icons.close_rounded,
-                                      color: AppColors.muted,
-                                    ),
-                                  ),
+                                          onPressed: _clearUrl,
+                                          icon: const Icon(
+                                            Icons.close_rounded,
+                                            color: AppColors.muted,
+                                          ),
+                                        ),
                                   enabledBorder: OutlineInputBorder(
                                     borderRadius: BorderRadius.circular(18),
                                     borderSide: const BorderSide(
@@ -402,14 +446,14 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
                                       height: 50,
                                       child: OutlinedButton.icon(
                                         style: OutlinedButton.styleFrom(
-                                          foregroundColor:
-                                          AppColors.brandBrown,
+                                          foregroundColor: AppColors.brandBrown,
                                           side: const BorderSide(
                                             color: AppColors.cardStroke,
                                           ),
                                           shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                            BorderRadius.circular(18),
+                                            borderRadius: BorderRadius.circular(
+                                              18,
+                                            ),
                                           ),
                                         ),
                                         onPressed: controller.loading
@@ -433,12 +477,12 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
                                       height: 50,
                                       child: ElevatedButton.icon(
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                          AppColors.brandBrown,
+                                          backgroundColor: AppColors.brandBrown,
                                           foregroundColor: Colors.white,
                                           shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                            BorderRadius.circular(18),
+                                            borderRadius: BorderRadius.circular(
+                                              18,
+                                            ),
                                           ),
                                         ),
                                         onPressed: controller.loading
@@ -493,10 +537,7 @@ class _HeroCard extends StatelessWidget {
   final String voiceText;
   final Future<void> Function() onMic;
 
-  const _HeroCard({
-    required this.voiceText,
-    required this.onMic,
-  });
+  const _HeroCard({required this.voiceText, required this.onMic});
 
   @override
   Widget build(BuildContext context) {
@@ -507,10 +548,7 @@ class _HeroCard extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFA67A2D),
-            Color(0xFF7B551C),
-          ],
+          colors: [Color(0xFFA67A2D), Color(0xFF7B551C)],
         ),
         boxShadow: [
           BoxShadow(
@@ -543,9 +581,7 @@ class _HeroCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.18),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.28),
-                  ),
+                  border: Border.all(color: Colors.white.withOpacity(0.28)),
                 ),
                 child: const Icon(
                   Icons.article_rounded,
@@ -620,10 +656,7 @@ class _VoiceHintCard extends StatelessWidget {
   final bool listening;
   final String lastWords;
 
-  const _VoiceHintCard({
-    required this.listening,
-    required this.lastWords,
-  });
+  const _VoiceHintCard({required this.listening, required this.lastWords});
 
   @override
   Widget build(BuildContext context) {
@@ -641,9 +674,7 @@ class _VoiceHintCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(
-                listening
-                    ? Icons.mic_rounded
-                    : Icons.record_voice_over_rounded,
+                listening ? Icons.mic_rounded : Icons.record_voice_over_rounded,
                 color: AppColors.brandBrown,
               ),
             ),
@@ -664,8 +695,8 @@ class _VoiceHintCard extends StatelessWidget {
                   Text(
                     listening
                         ? (lastWords.trim().isEmpty
-                        ? 'Bạn hãy nói lệnh...'
-                        : lastWords.trim())
+                              ? 'Bạn hãy nói lệnh...'
+                              : lastWords.trim())
                         : 'Có thể nói: dán link, đọc và tóm tắt, đọc lại, xoá link, dừng đọc hoặc quay lại.',
                     style: const TextStyle(
                       color: AppColors.muted,
@@ -819,9 +850,7 @@ class _LoadingPanel extends StatelessWidget {
             child: const Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(
-                  color: AppColors.brandBrown,
-                ),
+                CircularProgressIndicator(color: AppColors.brandBrown),
                 SizedBox(height: 16),
                 Text(
                   'Đang đọc bài viết...',
@@ -836,10 +865,7 @@ class _LoadingPanel extends StatelessWidget {
                 Text(
                   'Vui lòng chờ một chút',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 13.5,
-                  ),
+                  style: TextStyle(color: AppColors.muted, fontSize: 13.5),
                 ),
               ],
             ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/errors/error_utils.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_intent.dart';
 import '../../data/models/news_models.dart';
 import '../../data/models/read_url_models.dart';
 import '../../data/services/news_api.dart';
@@ -11,13 +12,8 @@ import 'news_article_payload.dart';
 
 typedef OpenNewsArticle = Future<dynamic> Function(NewsArticlePayload article);
 typedef OnHistorySaved = Future<void> Function(int historyId);
-enum NewsStage {
-  idle,
-  listing,
-  waitingChoice,
-  reading,
-  waitingNextAction,
-}
+
+enum NewsStage { idle, listing, waitingChoice, reading, waitingNextAction }
 
 enum AppVoiceIntent {
   home,
@@ -28,6 +24,8 @@ enum AppVoiceIntent {
   settings,
   camera,
   stop,
+  back,
+  repeat,
 }
 
 typedef HandleAppVoiceIntent = Future<void> Function(AppVoiceIntent intent);
@@ -50,12 +48,7 @@ class NewsAssistantController extends ChangeNotifier {
   OpenNewsArticle? _openArticle;
   HandleAppVoiceIntent? _onAppIntent;
 
-  NewsAssistantController(
-      this.newsApi,
-      this.readApi,
-      this.tts,
-      this.voice,
-      );
+  NewsAssistantController(this.newsApi, this.readApi, this.tts, this.voice);
 
   bool get active => stage != NewsStage.idle;
 
@@ -66,6 +59,7 @@ class NewsAssistantController extends ChangeNotifier {
   void unbindOnHistorySaved() {
     _onHistorySaved = null;
   }
+
   void bindOpenArticle(OpenNewsArticle callback) {
     _openArticle = callback;
   }
@@ -134,7 +128,9 @@ class NewsAssistantController extends ChangeNotifier {
       if (items.isEmpty) {
         stage = NewsStage.idle;
         notifyListeners();
-        await tts.speak('Mình không thấy tin phù hợp. Bạn thử nói chủ đề khác nhé.');
+        await tts.speak(
+          'Mình không thấy tin phù hợp. Bạn thử nói chủ đề khác nhé.',
+        );
         return;
       }
 
@@ -163,6 +159,7 @@ class NewsAssistantController extends ChangeNotifier {
   void _invalidateListening() {
     _listenEpoch++;
   }
+
   Future<void> silentStop({bool clearItems = false}) async {
     _invalidateListening();
 
@@ -179,6 +176,7 @@ class NewsAssistantController extends ChangeNotifier {
     await voice.stop();
     await tts.stop();
   }
+
   Future<void> _promptAndListen({
     required String prompt,
     required NewsStage expectedStage,
@@ -213,7 +211,7 @@ class NewsAssistantController extends ChangeNotifier {
 
     await _promptAndListen(
       prompt:
-      'Bạn muốn nghe bài số mấy? Bạn có thể nói: bài 1, bài 2, đọc lại danh sách, hoặc thoát.',
+          'Bạn muốn nghe bài số mấy? Bạn có thể nói: bài 1, bài 2, đọc lại danh sách, hoặc thoát.',
       expectedStage: NewsStage.waitingChoice,
       listenFn: _listenChoiceWithEpoch,
       settleMs: 1300,
@@ -239,7 +237,7 @@ class NewsAssistantController extends ChangeNotifier {
 
     await _promptAndListen(
       prompt:
-      'Bạn muốn làm gì tiếp theo? Bạn có thể nói: bài 1, đọc lại danh sách, quét chữ, mô tả ảnh, lịch sử, tác vụ, cài đặt, camera, trang chủ hoặc thoát.',
+          'Bạn muốn làm gì tiếp theo? Bạn có thể nói: bài 1, đọc lại danh sách, quét chữ, mô tả ảnh, lịch sử, tác vụ, cài đặt, camera, trang chủ hoặc thoát.',
       expectedStage: NewsStage.waitingNextAction,
       listenFn: _listenNextActionWithEpoch,
       settleMs: 1500,
@@ -269,7 +267,7 @@ class NewsAssistantController extends ChangeNotifier {
     if (stage == NewsStage.waitingChoice) {
       await _promptAndListen(
         prompt:
-        'Bạn muốn nghe bài số mấy? Bạn có thể nói: bài 1, bài 2, đọc lại danh sách, hoặc thoát.',
+            'Bạn muốn nghe bài số mấy? Bạn có thể nói: bài 1, bài 2, đọc lại danh sách, hoặc thoát.',
         expectedStage: NewsStage.waitingChoice,
         listenFn: _listenChoiceWithEpoch,
       );
@@ -279,7 +277,7 @@ class NewsAssistantController extends ChangeNotifier {
     if (stage == NewsStage.waitingNextAction) {
       await _promptAndListen(
         prompt:
-        'Bạn muốn làm gì tiếp theo? Bạn có thể nói: bài 1, đọc lại danh sách, quét chữ, mô tả ảnh, lịch sử, tác vụ, cài đặt, camera, trang chủ hoặc thoát.',
+            'Bạn muốn làm gì tiếp theo? Bạn có thể nói: bài 1, đọc lại danh sách, quét chữ, mô tả ảnh, lịch sử, tác vụ, cài đặt, camera, trang chủ hoặc thoát.',
         expectedStage: NewsStage.waitingNextAction,
         listenFn: _listenNextActionWithEpoch,
       );
@@ -400,6 +398,43 @@ class NewsAssistantController extends ChangeNotifier {
     final normalized = _norm(raw);
     if (normalized.isEmpty) return true;
 
+    final globalIntent = GlobalVoiceIntentParser.parse(raw);
+    if (globalIntent != GlobalVoiceIntent.none) {
+      switch (globalIntent) {
+        case GlobalVoiceIntent.home:
+          await _dispatchAppIntent(AppVoiceIntent.home);
+          return true;
+        case GlobalVoiceIntent.back:
+          await _dispatchAppIntent(AppVoiceIntent.back);
+          return true;
+        case GlobalVoiceIntent.stopReading:
+          await _dispatchAppIntent(AppVoiceIntent.stop);
+          return true;
+        case GlobalVoiceIntent.repeatReading:
+          await _dispatchAppIntent(AppVoiceIntent.repeat);
+          return true;
+        case GlobalVoiceIntent.settings:
+          await _dispatchAppIntent(AppVoiceIntent.settings);
+          return true;
+        case GlobalVoiceIntent.history:
+          await _dispatchAppIntent(AppVoiceIntent.history);
+          return true;
+        case GlobalVoiceIntent.caption:
+          await _dispatchAppIntent(AppVoiceIntent.caption);
+          return true;
+        case GlobalVoiceIntent.ocr:
+          await _dispatchAppIntent(AppVoiceIntent.ocr);
+          return true;
+        case GlobalVoiceIntent.news:
+          micArmed = false;
+          notifyListeners();
+          await startTop();
+          return true;
+        case GlobalVoiceIntent.none:
+          break;
+      }
+    }
+
     if (normalized.contains('thoat') ||
         normalized.contains('dung') ||
         normalized.contains('ket thuc')) {
@@ -422,44 +457,51 @@ class NewsAssistantController extends ChangeNotifier {
 
     final appIntent = _parseAppIntent(normalized);
     if (appIntent != null) {
-      _invalidateListening();
-      await voice.stop();
-      await tts.stop();
-
-      switch (appIntent) {
-        case AppVoiceIntent.ocr:
-          await tts.speak('Ok, mình chuyển sang quét chữ.');
-          break;
-        case AppVoiceIntent.caption:
-          await tts.speak('Ok, mình chuyển sang mô tả ảnh.');
-          break;
-        case AppVoiceIntent.history:
-          await tts.speak('Ok, mình mở lịch sử.');
-          break;
-        case AppVoiceIntent.tasks:
-          await tts.speak('Ok, mình mở tác vụ.');
-          break;
-        case AppVoiceIntent.settings:
-          await tts.speak('Ok, mình mở cài đặt.');
-          break;
-        case AppVoiceIntent.home:
-          await tts.speak('Ok, mình về trang chủ.');
-          break;
-        case AppVoiceIntent.camera:
-          await tts.speak('Ok, mình mở camera.');
-          break;
-        case AppVoiceIntent.stop:
-          await stop();
-          return true;
-      }
-
-      if (_onAppIntent != null) {
-        await _onAppIntent!(appIntent);
-      }
+      await _dispatchAppIntent(appIntent);
       return true;
     }
 
     return false;
+  }
+
+  Future<void> _dispatchAppIntent(AppVoiceIntent appIntent) async {
+    _invalidateListening();
+    await voice.stop();
+    await tts.stop();
+
+    switch (appIntent) {
+      case AppVoiceIntent.ocr:
+        await tts.speak('Ok, mình chuyển sang quét chữ.');
+        break;
+      case AppVoiceIntent.caption:
+        await tts.speak('Ok, mình chuyển sang mô tả ảnh.');
+        break;
+      case AppVoiceIntent.history:
+        await tts.speak('Ok, mình mở lịch sử.');
+        break;
+      case AppVoiceIntent.tasks:
+        await tts.speak('Ok, mình mở tác vụ.');
+        break;
+      case AppVoiceIntent.settings:
+        await tts.speak('Ok, mình mở cài đặt.');
+        break;
+      case AppVoiceIntent.home:
+        await tts.speak('Ok, mình về trang chủ.');
+        break;
+      case AppVoiceIntent.camera:
+        await tts.speak('Ok, mình mở camera.');
+        break;
+      case AppVoiceIntent.stop:
+        await stop();
+        return;
+      case AppVoiceIntent.back:
+      case AppVoiceIntent.repeat:
+        break;
+    }
+
+    if (_onAppIntent != null) {
+      await _onAppIntent!(appIntent);
+    }
   }
 
   AppVoiceIntent? _parseAppIntent(String n) {
@@ -481,7 +523,9 @@ class NewsAssistantController extends ChangeNotifier {
     if (n.contains('trang chu') || n == 'home') {
       return AppVoiceIntent.home;
     }
-    if (n.contains('camera') || n.contains('chup nhanh') || n.contains('chup')) {
+    if (n.contains('camera') ||
+        n.contains('chup nhanh') ||
+        n.contains('chup')) {
       return AppVoiceIntent.camera;
     }
     return null;
@@ -520,8 +564,9 @@ class NewsAssistantController extends ChangeNotifier {
       }
 
       final rawTitle = _cleanPlainText((res.title ?? '').trim());
-      final finalTitle =
-      _shouldUseFallbackTitle(rawTitle) ? fallbackTitle : rawTitle;
+      final finalTitle = _shouldUseFallbackTitle(rawTitle)
+          ? fallbackTitle
+          : rawTitle;
       final summaryText = _cleanSummaryText(_pickSummaryText(res));
 
       if (_looksLikeGoogleNewsBoilerplate(finalTitle, summaryText)) {
@@ -553,7 +598,7 @@ class NewsAssistantController extends ChangeNotifier {
       if (stage == NewsStage.waitingChoice) {
         await _promptAndListen(
           prompt:
-          'Bạn muốn nghe bài số mấy? Bạn có thể nói: bài 1, bài 2, đọc lại danh sách, hoặc thoát.',
+              'Bạn muốn nghe bài số mấy? Bạn có thể nói: bài 1, bài 2, đọc lại danh sách, hoặc thoát.',
           expectedStage: NewsStage.waitingChoice,
           listenFn: _listenChoiceWithEpoch,
           settleMs: 1300,
@@ -678,7 +723,8 @@ class NewsAssistantController extends ChangeNotifier {
 
     if (parts.length > 1) {
       final tail = parts.last.trim();
-      final looksLikeSource = tail.length <= 24 &&
+      final looksLikeSource =
+          tail.length <= 24 &&
           !tail.contains(',') &&
           !tail.contains('.') &&
           !tail.contains('?') &&
