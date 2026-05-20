@@ -223,11 +223,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String _buildHomeResumePrompt() {
     if (_homeResumePromptCount == 0) {
       return 'Bạn đang ở trang chủ. Bạn muốn làm gì tiếp theo? '
-          'Bạn có thể nói quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh, đăng nhập hoặc đăng ký.';
+          'Bạn có thể nói: mô tả xung quanh, đọc chữ, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh, đăng nhập hoặc đăng ký.';
     }
 
     return 'Trang chủ đây rồi. Bạn muốn làm gì tiếp? '
-        'Nói quét chữ, mô tả ảnh, đọc báo, lịch sử, cài đặt, tác vụ hoặc chụp nhanh.';
+        'Nói mô tả xung quanh, đọc chữ, đọc báo, lịch sử, cài đặt, tác vụ hoặc chụp nhanh.';
   }
 
   Future<void> _resumeHomeVoice({bool speakPrompt = false}) async {
@@ -548,6 +548,12 @@ class _HomeScreenState extends State<HomeScreen> {
         await _openCaptionScreen();
         return true;
 
+      case GlobalVoiceIntent.camera:
+        await _say('Mở chụp nhanh trực tiếp.', title: 'Chụp nhanh');
+        if (!mounted) return true;
+        await _onCameraPressed();
+        return true;
+
       case GlobalVoiceIntent.ocr:
         await _say('Mở đọc chữ.', title: 'Đọc chữ');
         if (!mounted) return true;
@@ -783,15 +789,6 @@ class _HomeScreenState extends State<HomeScreen> {
       await _say('Mở mô tả ảnh.', title: 'Mô tả ảnh');
       if (!mounted) return;
       await _openCaptionScreen();
-      return;
-    }
-
-    if (text.contains('chup nhanh') ||
-        text.contains('chup') ||
-        text.contains('camera')) {
-      await _say('Mở chụp nhanh trực tiếp.', title: 'Chụp nhanh');
-      if (!mounted) return;
-      await _onCameraPressed();
       return;
     }
 

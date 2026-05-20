@@ -696,6 +696,9 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       case GlobalVoiceIntent.caption:
         await _exitWithAction(LiveVisionAction.caption);
         return true;
+      case GlobalVoiceIntent.camera:
+        // Already in camera, ignore
+        return true;
       case GlobalVoiceIntent.none:
         return false;
     }

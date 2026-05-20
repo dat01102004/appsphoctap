@@ -15,7 +15,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
   List<dynamic> voices = [];
   Map<String, String>? selected;
 
-  double rate = 0.45;
+  double rate = 0.5;
   double pitch = 1.0;
 
   @override
@@ -49,8 +49,8 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
           Text("Tốc độ: ${rate.toStringAsFixed(2)}"),
           Slider(
             value: rate,
-            min: 0.2,
-            max: 0.8,
+            min: 0.1,
+            max: 1.0,
             onChanged: (v) async {
               setState(() => rate = v);
               await tts.setRate(v);
@@ -82,7 +82,7 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
             )
           else
             DropdownButtonFormField<Map<String, String>>(
-              value: selected,
+              initialValue: selected,
               items: voices
                   .where(
                     (e) =>

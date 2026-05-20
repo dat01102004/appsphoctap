@@ -8,6 +8,7 @@ enum GlobalVoiceIntent {
   caption,
   ocr,
   news,
+  camera,
   none,
 }
 
@@ -25,6 +26,7 @@ class GlobalVoiceIntentParser {
     if (_isBack(text)) return GlobalVoiceIntent.back;
     if (_isSettings(text)) return GlobalVoiceIntent.settings;
     if (_isHistory(text)) return GlobalVoiceIntent.history;
+    if (_isCamera(text)) return GlobalVoiceIntent.camera;
     if (_isCaption(text)) return GlobalVoiceIntent.caption;
     if (_isOcr(text)) return GlobalVoiceIntent.ocr;
     if (_isNews(text)) return GlobalVoiceIntent.news;
@@ -120,12 +122,18 @@ class GlobalVoiceIntentParser {
   static bool _isCaption(String text) {
     return _hasPhrase(text, 'mo ta anh') ||
         _hasPhrase(text, 'mo ta hinh anh') ||
-        _hasPhrase(text, 'mo ta xung quanh') ||
         _hasPhrase(text, 'mo ta canh vat') ||
         _hasPhrase(text, 'mo ta') ||
         _hasPhrase(text, 'nhin giup') ||
         _hasPhrase(text, 'xem giup') ||
         _hasPhrase(text, 'caption');
+  }
+
+  static bool _isCamera(String text) {
+    return _hasPhrase(text, 'mo ta xung quanh') ||
+        _hasPhrase(text, 'xung quanh') ||
+        _hasPhrase(text, 'chup nhanh') ||
+        _hasPhrase(text, 'live vision');
   }
 
   static bool _isOcr(String text) {

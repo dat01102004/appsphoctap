@@ -272,6 +272,12 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
           await widget.onOpenCaption!();
         }
         return true;
+      case GlobalVoiceIntent.camera:
+        await _popToRoot();
+        if (widget.onOpenCamera != null) {
+          await widget.onOpenCamera!();
+        }
+        return true;
       case GlobalVoiceIntent.news:
         await _news.startTop();
         return true;

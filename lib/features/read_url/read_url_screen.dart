@@ -222,6 +222,7 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
       case GlobalVoiceIntent.settings:
       case GlobalVoiceIntent.history:
       case GlobalVoiceIntent.caption:
+      case GlobalVoiceIntent.camera:
       case GlobalVoiceIntent.ocr:
       case GlobalVoiceIntent.news:
         await context.read<VoiceController>().stop();

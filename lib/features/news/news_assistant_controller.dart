@@ -441,6 +441,9 @@ class NewsAssistantController extends ChangeNotifier {
           notifyListeners();
           await startTop();
           return true;
+        case GlobalVoiceIntent.camera:
+          await _dispatchAppIntent(AppVoiceIntent.home);
+          return true;
         case GlobalVoiceIntent.none:
           break;
       }

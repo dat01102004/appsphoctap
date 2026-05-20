@@ -386,6 +386,9 @@ class _OcrScreenState extends State<OcrScreen> {
       case GlobalVoiceIntent.ocr:
         await _askSource();
         return true;
+      case GlobalVoiceIntent.camera:
+        await _popToRoot();
+        return true;
       case GlobalVoiceIntent.none:
         return false;
     }

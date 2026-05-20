@@ -4,6 +4,7 @@ import '../../core/errors/error_utils.dart';
 import '../../core/tts/tts_service.dart';
 import '../../data/services/auth_api.dart';
 import '../../data/services/storage_service.dart';
+import '../settings/settings_controller.dart';
 
 class AuthFriendlyException implements Exception {
   final String message;
@@ -18,6 +19,7 @@ class AuthController extends ChangeNotifier {
   final AuthApi api;
   final StorageService storage;
   final TtsService tts;
+  final SettingsController settings;
 
   bool loggedIn = false;
   String? email;
@@ -26,7 +28,7 @@ class AuthController extends ChangeNotifier {
 
   String? errorMessage;
 
-  AuthController(this.api, this.storage, this.tts);
+  AuthController(this.api, this.storage, this.tts, this.settings);
 
   String get displayName {
     final name = fullName?.trim() ?? '';
@@ -53,13 +55,21 @@ class AuthController extends ChangeNotifier {
         email = me.email;
         fullName = me.fullName;
         phone = me.phone;
+        await settings.loadForCurrentAuth();
       } catch (_) {
         await storage.clearToken();
         loggedIn = false;
         email = null;
         fullName = null;
         phone = null;
+        await settings.resetSettingsToDefault(
+          reason: 'Phiên đăng nhập hết hạn. Đã dùng cài đặt mặc định.',
+        );
       }
+    } else {
+      await settings.resetSettingsToDefault(
+        reason: 'Chưa đăng nhập: đang dùng cài đặt mặc định trên thiết bị.',
+      );
     }
 
     notifyListeners();
@@ -91,6 +101,8 @@ class AuthController extends ChangeNotifier {
       this.email = me.email;
       fullName = me.fullName;
       phone = me.phone;
+
+      await settings.loadForCurrentAuth();
 
       notifyListeners();
       await tts.speak("Đăng nhập thành công.");
@@ -130,6 +142,8 @@ class AuthController extends ChangeNotifier {
       this.email = me.email;
       this.fullName = me.fullName;
       this.phone = me.phone;
+
+      await settings.loadForCurrentAuth();
 
       notifyListeners();
       await tts.speak("Đăng ký thành công.");
@@ -179,6 +193,9 @@ class AuthController extends ChangeNotifier {
 
   Future<void> logout() async {
     await storage.clearToken();
+    await settings.resetSettingsToDefault(
+      reason: 'Đã đăng xuất. Đang dùng cài đặt mặc định.',
+    );
 
     loggedIn = false;
     email = null;

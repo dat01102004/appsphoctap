@@ -386,6 +386,9 @@ class _CaptionScreenState extends State<CaptionScreen> {
       case GlobalVoiceIntent.caption:
         await _askSource();
         return true;
+      case GlobalVoiceIntent.camera:
+        await _popToRoot();
+        return true;
       case GlobalVoiceIntent.none:
         return false;
     }
