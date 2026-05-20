@@ -572,7 +572,7 @@ class _SettingsTabState extends State<SettingsTab> {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF7B551C).withOpacity(0.22),
+            color: const Color(0xFF7B551C).withValues(alpha: 0.24),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -588,7 +588,7 @@ class _SettingsTabState extends State<SettingsTab> {
               height: 140,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.08),
+                color: Colors.white.withValues(alpha: 0.1),
               ),
             ),
           ),
@@ -600,7 +600,7 @@ class _SettingsTabState extends State<SettingsTab> {
               height: 150,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.06),
+                color: Colors.white.withValues(alpha: 0.08),
               ),
             ),
           ),
@@ -615,10 +615,10 @@ class _SettingsTabState extends State<SettingsTab> {
                       width: 62,
                       height: 62,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.white.withValues(alpha: 0.24),
                         borderRadius: BorderRadius.circular(22),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.30),
+                          color: Colors.white.withValues(alpha: 0.48),
                         ),
                       ),
                       child: Center(
@@ -640,7 +640,7 @@ class _SettingsTabState extends State<SettingsTab> {
                           Text(
                             loggedIn ? 'Xin chào,' : 'Chế độ khách',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.84),
+                              color: Colors.white.withValues(alpha: 0.92),
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
                             ),
@@ -668,9 +668,10 @@ class _SettingsTabState extends State<SettingsTab> {
                       ? 'Mắt Nói đã sẵn sàng hỗ trợ bạn bằng giọng nói, đọc chữ, mô tả hình ảnh và lưu lịch sử sử dụng.'
                       : 'Đăng nhập để lưu lịch sử, đồng bộ thông tin và dùng đầy đủ tính năng của Mắt Nói.',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.90),
+                    color: Colors.white.withValues(alpha: 0.94),
                     fontSize: 14,
                     height: 1.5,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -735,7 +736,8 @@ class _SettingsTabState extends State<SettingsTab> {
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.white,
                               side: BorderSide(
-                                color: Colors.white.withOpacity(0.55),
+                                color: Colors.white.withValues(alpha: 0.8),
+                                width: 1.3,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
@@ -1284,9 +1286,9 @@ class _GlassInfoPill extends StatelessWidget {
       height: 42,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.14),
+        color: Colors.white.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white.withOpacity(0.22)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.45)),
       ),
       child: Row(
         children: [

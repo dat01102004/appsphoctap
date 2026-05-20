@@ -1,7 +1,7 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/errors/error_utils.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
@@ -61,10 +61,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _announce() async {
     await _speak(
       'Màn hình thay đổi người dùng. '
-          'Bạn có thể sửa họ tên, email và số điện thoại. '
-          'Có thể nhập bằng tay hoặc giữ màn hình hai giây để nói lệnh. '
-          'Ví dụ: họ tên Nguyễn Văn A, email abc a còng gmail chấm com, '
-          'số điện thoại 0 9 0 1 2 3 4 5 6 7, hoặc nói lưu thay đổi.',
+      'Bạn có thể sửa họ tên, email và số điện thoại. '
+      'Có thể nhập bằng tay hoặc giữ màn hình hai giây để nói lệnh. '
+      'Ví dụ: họ tên Nguyễn Văn A, email abc a còng gmail chấm com, '
+      'số điện thoại 0 9 0 1 2 3 4 5 6 7, hoặc nói lưu thay đổi.',
     );
   }
 
@@ -123,25 +123,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         n.contains('nhac thong tin')) {
       await _speak(
         'Họ tên hiện tại là ${_fullNameCtl.text.trim().isEmpty ? "chưa có" : _fullNameCtl.text.trim()}. '
-            'Email hiện tại là ${_emailCtl.text.trim().isEmpty ? "chưa có" : _emailCtl.text.trim()}. '
-            'Số điện thoại hiện tại là ${_phoneCtl.text.trim().isEmpty ? "chưa có" : _phoneCtl.text.trim()}.',
+        'Email hiện tại là ${_emailCtl.text.trim().isEmpty ? "chưa có" : _emailCtl.text.trim()}. '
+        'Số điện thoại hiện tại là ${_phoneCtl.text.trim().isEmpty ? "chưa có" : _phoneCtl.text.trim()}.',
       );
       return;
     }
 
-    if (n.contains('luu') ||
-        n.contains('cap nhat') ||
-        n.contains('xac nhan')) {
+    if (n.contains('luu') || n.contains('cap nhat') || n.contains('xac nhan')) {
       await _submit();
       return;
     }
 
     final nameValue = _extractVoiceValue(
       raw,
-      patterns: const [
-        r'^(họ tên|ho ten)\s+',
-        r'^(tên|ten)\s+',
-      ],
+      patterns: const [r'^(họ tên|ho ten)\s+', r'^(tên|ten)\s+'],
     );
     if (nameValue != null && nameValue.trim().isNotEmpty) {
       _fullNameCtl.text = _normalizeHumanName(nameValue);
@@ -152,10 +147,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     final emailValue = _extractVoiceValue(
       raw,
-      patterns: const [
-        r'^(email|e mail)\s+',
-        r'^(gmail)\s+',
-      ],
+      patterns: const [r'^(email|e mail)\s+', r'^(gmail)\s+'],
     );
     if (emailValue != null && emailValue.trim().isNotEmpty) {
       _emailCtl.text = _normalizeSpokenEmail(emailValue);
@@ -182,22 +174,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     await _speak(
       'Mình chưa hiểu lệnh. '
-          'Bạn có thể nói: họ tên Nguyễn Văn A, email abc a còng gmail chấm com, '
-          'số điện thoại 0 9 0 1 2 3 4 5 6 7, lưu thay đổi hoặc quay lại.',
+      'Bạn có thể nói: họ tên Nguyễn Văn A, email abc a còng gmail chấm com, '
+      'số điện thoại 0 9 0 1 2 3 4 5 6 7, lưu thay đổi hoặc quay lại.',
     );
   }
 
-  String? _extractVoiceValue(
-      String raw, {
-        required List<String> patterns,
-      }) {
+  String? _extractVoiceValue(String raw, {required List<String> patterns}) {
     final value = raw.trim();
     for (final pattern in patterns) {
-      final regex = RegExp(
-        pattern,
-        caseSensitive: false,
-        unicode: true,
-      );
+      final regex = RegExp(pattern, caseSensitive: false, unicode: true);
       final match = regex.firstMatch(value);
       if (match != null) {
         final result = value.substring(match.end).trim();
@@ -214,9 +199,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return raw
         .split(' ')
         .map((part) {
-      if (part.isEmpty) return part;
-      return part[0].toUpperCase() + part.substring(1);
-    })
+          if (part.isEmpty) return part;
+          return part[0].toUpperCase() + part.substring(1);
+        })
         .join(' ');
   }
 
@@ -309,10 +294,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     } catch (e) {
       final message = _errorText(e);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
-      await _speak(message);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      if (e is! AuthFriendlyException) {
+        await _speak(message);
+      }
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -321,26 +308,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   String _errorText(Object error) {
-    if (error is DioException) {
-      final data = error.response?.data;
-      if (data is Map && data['detail'] != null) {
-        return data['detail'].toString();
-      }
-      if (error.message != null && error.message!.trim().isNotEmpty) {
-        return error.message!.trim();
-      }
+    if (error is AuthFriendlyException) {
+      return error.message;
     }
-    return 'Không cập nhật được thông tin người dùng.';
+    return friendlyApiMessage(error, feature: 'auth');
   }
 
   String _norm(String input) {
     var s = input.toLowerCase().trim();
 
-    const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
+    const from =
+        'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
         'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ'
         'ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨ'
         'ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ';
-    const to = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
+    const to =
+        'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
         'ooooooooooooooooouuuuuuuuuuuyyyyyd'
         'AAAAAAAAAAAAAAAAAEEEEEEEEEEEIIIII'
         'OOOOOOOOOOOOOOOOOUUUUUUUUUUUYYYYYD';
@@ -415,8 +398,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               Text(
                                 voice.isListening
                                     ? (voice.lastWords.trim().isEmpty
-                                    ? 'Đang nghe...'
-                                    : voice.lastWords.trim())
+                                          ? 'Đang nghe...'
+                                          : voice.lastWords.trim())
                                     : 'Giữ màn hình 2 giây rồi nói: họ tên..., email..., số điện thoại..., lưu thay đổi.',
                                 style: const TextStyle(
                                   fontSize: 13.5,
@@ -550,13 +533,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                     ),
                                     icon: _saving
                                         ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.2,
-                                        color: Colors.white,
-                                      ),
-                                    )
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2.2,
+                                              color: Colors.white,
+                                            ),
+                                          )
                                         : const Icon(Icons.save_outlined),
                                     label: Text(
                                       _saving ? 'Đang lưu...' : 'Lưu thay đổi',
@@ -674,10 +657,7 @@ class _ProfileField extends StatelessWidget {
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(
-                color: Colors.redAccent,
-                width: 1.3,
-              ),
+              borderSide: const BorderSide(color: Colors.redAccent, width: 1.3),
             ),
           ),
         ),

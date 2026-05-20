@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/errors/api_exception.dart';
+import '../../core/errors/error_utils.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
@@ -59,11 +59,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _announceIntro() async {
     await _speak(
       'Màn hình đăng ký. '
-          'Bạn cần nhập họ và tên, email, số điện thoại và mật khẩu. '
-          'Bạn cũng có thể dùng giọng nói. '
-          'Ví dụ: họ tên Nguyễn Văn A, email người dùng a còng gmail chấm com, '
-          'số điện thoại 0 9 1 2 3 4 5 6 7 8, mật khẩu người dùng một hai ba, sau đó nói đăng ký.'
-        'Giữ màn hình 2 giây để sử dụng giọng nói',
+      'Bạn cần nhập họ và tên, email, số điện thoại và mật khẩu. '
+      'Bạn cũng có thể dùng giọng nói. '
+      'Ví dụ: họ tên Nguyễn Văn A, email người dùng a còng gmail chấm com, '
+      'số điện thoại 0 9 1 2 3 4 5 6 7 8, mật khẩu người dùng một hai ba, sau đó nói đăng ký.'
+      'Giữ màn hình 2 giây để sử dụng giọng nói',
     );
   }
 
@@ -254,7 +254,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     await _speak(
       'Mình chưa hiểu lệnh. '
-          'Bạn có thể nói họ tên cộng nội dung, email cộng nội dung, số điện thoại cộng nội dung, mật khẩu cộng nội dung hoặc đăng ký.',
+      'Bạn có thể nói họ tên cộng nội dung, email cộng nội dung, số điện thoại cộng nội dung, mật khẩu cộng nội dung hoặc đăng ký.',
     );
   }
 
@@ -272,9 +272,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   String _stripVietnamese(String input) {
     var s = input.toLowerCase().trim();
-    const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
+    const from =
+        'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
         'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
-    const to = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
+    const to =
+        'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
         'ooooooooooooooooouuuuuuuuuuuyyyyyd';
 
     for (int i = 0; i < from.length; i++) {
@@ -289,10 +291,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         .replaceAll(RegExp(r'\s+'), ' ')
         .split(' ')
         .map((e) {
-      if (e.isEmpty) return e;
-      final lower = e.toLowerCase();
-      return lower[0].toUpperCase() + lower.substring(1);
-    })
+          if (e.isEmpty) return e;
+          final lower = e.toLowerCase();
+          return lower[0].toUpperCase() + lower.substring(1);
+        })
         .join(' ');
   }
 
@@ -381,18 +383,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   String _friendlyRegisterError(Object error) {
-    if (error is ApiException) {
-      final msg = error.friendlyMessage().toLowerCase();
-      if (msg.contains('email đã tồn tại') || msg.contains('email da ton tai')) {
-        return 'Email này đã được đăng ký.';
-      }
-      if (msg.contains('số điện thoại đã tồn tại') ||
-          msg.contains('so dien thoai da ton tai')) {
-        return 'Số điện thoại này đã được đăng ký.';
-      }
-      return error.friendlyMessage();
+    if (error is AuthFriendlyException) {
+      return error.message;
     }
-    return 'Đăng ký thất bại. Vui lòng thử lại.';
+    return friendlyApiMessage(error, feature: 'auth_register');
   }
 
   String _norm(String input) {
@@ -468,7 +462,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final message = _friendlyRegisterError(e);
       if (!mounted) return;
       setState(() => _errorText = message);
-      await _speak(message);
+      if (e is! AuthFriendlyException) {
+        await _speak(message);
+      }
     } finally {
       if (mounted) {
         setState(() => loading = false);
@@ -569,7 +565,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget _voiceCard() {
     final voice = context.watch<VoiceController>();
     final listeningText = voice.isListening
-        ? (voice.lastWords.trim().isEmpty ? 'Đang nghe...' : voice.lastWords.trim())
+        ? (voice.lastWords.trim().isEmpty
+              ? 'Đang nghe...'
+              : voice.lastWords.trim())
         : 'Nhấn mic hoặc giữ màn hình 2 giây để nói';
 
     return Card(
@@ -595,7 +593,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    voice.isListening ? 'Đang nghe lệnh đăng ký' : 'Điều khiển bằng giọng nói',
+                    voice.isListening
+                        ? 'Đang nghe lệnh đăng ký'
+                        : 'Điều khiển bằng giọng nói',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
@@ -606,10 +606,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     listeningText,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.muted,
-                      height: 1.4,
-                    ),
+                    style: const TextStyle(color: AppColors.muted, height: 1.4),
                   ),
                 ],
               ),
@@ -626,7 +623,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 }
               },
               icon: Icon(
-                voice.isListening ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+                voice.isListening
+                    ? Icons.stop_circle_outlined
+                    : Icons.play_circle_outline,
                 color: AppColors.brandBrown,
               ),
             ),
@@ -714,7 +713,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
                   onSubmitted: (_) => _phoneFocus.requestFocus(),
-                  helper: 'Mẹo voice: nói “email người dùng a còng gmail chấm com”.',
+                  helper:
+                      'Mẹo voice: nói “email người dùng a còng gmail chấm com”.',
                   onTapCard: () async {
                     _emailFocus.requestFocus();
                     await _speak('Ô email đang được chọn.');
@@ -753,7 +753,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       setState(() => _hidePassword = !_hidePassword);
                     },
                     icon: Icon(
-                      _hidePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                      _hidePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
                       color: AppColors.brandBrown,
                     ),
                   ),

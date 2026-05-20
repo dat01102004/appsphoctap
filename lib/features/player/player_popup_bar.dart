@@ -57,7 +57,7 @@ class PlayerPopupBar extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.brandBrown,
+          color: AppColors.brandBrownDark,
           borderRadius: BorderRadius.circular(16),
           boxShadow: const [
             BoxShadow(
@@ -89,8 +89,9 @@ class PlayerPopupBar extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.78),
+                      color: Colors.white.withValues(alpha: 0.9),
                       fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -163,8 +164,8 @@ class _PopupActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final background = filled
         ? Colors.white
-        : Colors.white.withValues(alpha: 0.12);
-    final foreground = filled ? AppColors.brandBrown : Colors.white;
+        : Colors.white.withValues(alpha: 0.22);
+    final foreground = filled ? AppColors.brandBrownDark : Colors.white;
 
     return Semantics(
       button: true,
@@ -180,6 +181,9 @@ class _PopupActionButton extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
+                side: filled
+                    ? BorderSide.none
+                    : BorderSide(color: Colors.white.withValues(alpha: 0.55)),
               ),
             ),
             onPressed: onPressed,

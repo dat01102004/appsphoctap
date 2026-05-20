@@ -389,7 +389,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                           selected: _tab == 0,
                           onSelected: (_) => setState(() => _tab = 0),
                           selectedColor: AppColors.cardStroke.withValues(
-                            alpha: 0.55,
+                            alpha: 0.78,
                           ),
                         ),
                       ),
@@ -400,7 +400,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                           selected: _tab == 1,
                           onSelected: (_) => setState(() => _tab = 1),
                           selectedColor: AppColors.cardStroke.withValues(
-                            alpha: 0.55,
+                            alpha: 0.78,
                           ),
                         ),
                       ),
@@ -423,17 +423,13 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 borderSide: BorderSide(
-                                  color: AppColors.cardStroke.withValues(
-                                    alpha: 0.7,
-                                  ),
+                                  color: AppColors.cardStroke,
                                 ),
                               ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 borderSide: BorderSide(
-                                  color: AppColors.cardStroke.withValues(
-                                    alpha: 0.7,
-                                  ),
+                                  color: AppColors.cardStroke,
                                 ),
                               ),
                               prefixIcon: const Icon(Icons.search),
@@ -473,7 +469,10 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                                 voice.isListening
                                     ? 'Đang nghe: ${voice.lastWords}'
                                     : 'Gợi ý: nói “bài 1”, “đọc lại danh sách”, “quét chữ”, “mô tả ảnh”, “lịch sử”, “tác vụ”, “cài đặt”, “camera”. Hoặc giữ màn hình 2 giây để bật mic.',
-                                style: const TextStyle(color: Colors.black54),
+                                style: const TextStyle(
+                                  color: AppColors.muted,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ],
@@ -499,7 +498,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundColor: AppColors.cardStroke.withValues(
-                                alpha: 0.5,
+                                alpha: 0.75,
                               ),
                               child: Text(
                                 '${i + 1}',
@@ -571,7 +570,10 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                                 const SizedBox(height: 10),
                                 const Text(
                                   'Bạn cũng có thể giữ màn hình 2 giây để bật mic và ra lệnh bằng giọng nói.',
-                                  style: TextStyle(color: Colors.black54),
+                                  style: TextStyle(
+                                    color: AppColors.muted,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ],
                             ),

@@ -902,9 +902,12 @@ class _HomeScreenState extends State<HomeScreen> {
         await _goHistory();
         break;
       case 2:
-        await _goTasks();
+        await _onCameraPressed();
         break;
       case 3:
+        await _goTasks();
+        break;
+      case 4:
         await _goSettings();
         break;
     }
@@ -974,7 +977,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: FloatingActionButton(
                 elevation: 0,
-                backgroundColor: AppColors.brandBrown,
+                backgroundColor: AppColors.brandBrownDark,
                 onPressed: _onCameraPressed,
                 child: const AppIcon(
                   AppIcons.camera,

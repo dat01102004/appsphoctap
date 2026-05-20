@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/errors/error_utils.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/voice/global_voice_intent.dart';
@@ -396,10 +397,14 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       if (forceSpeak || (_autoSpeak && _shouldAutoSpeak(resultText))) {
         await _speak(resultText, title: _screenTitle);
       }
-    } catch (_) {
+    } catch (e) {
+      final message = friendlyApiMessage(
+        e,
+        feature: _mode == _LiveVisionMode.ocr ? 'ocr' : 'caption',
+      );
       if (mounted) {
         setState(() {
-          _statusText = 'Có lỗi khi phân tích khung hình';
+          _statusText = message;
         });
       }
     } finally {

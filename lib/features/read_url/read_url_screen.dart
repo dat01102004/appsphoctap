@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/errors/error_utils.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/voice/global_voice_intent.dart';
@@ -95,10 +96,11 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
 
     try {
       await controller.submit(url);
-    } catch (_) {
-      await _speak(
-        'Có lỗi khi đọc đường dẫn. Bạn kiểm tra lại URL hoặc thử bài viết khác nhé.',
-      );
+    } catch (e) {
+      final message = friendlyApiMessage(e, feature: 'read_url');
+      if (e is! FriendlyError) {
+        await _speak(message);
+      }
     }
   }
 
@@ -502,6 +504,16 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
                                   ),
                                 ],
                               ),
+                              if (controller.errorMessage != null) ...[
+                                const SizedBox(height: 12),
+                                Text(
+                                  controller.errorMessage!,
+                                  style: const TextStyle(
+                                    color: AppColors.danger,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -552,7 +564,7 @@ class _HeroCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF7B551C).withOpacity(0.20),
+            color: const Color(0xFF7B551C).withValues(alpha: 0.22),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -568,7 +580,7 @@ class _HeroCard extends StatelessWidget {
               height: 132,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.white.withOpacity(0.08),
+                color: Colors.white.withValues(alpha: 0.1),
               ),
             ),
           ),
@@ -579,9 +591,11 @@ class _HeroCard extends StatelessWidget {
                 width: 58,
                 height: 58,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.18),
+                  color: Colors.white.withValues(alpha: 0.24),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withOpacity(0.28)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.48),
+                  ),
                 ),
                 child: const Icon(
                   Icons.article_rounded,
@@ -597,7 +611,7 @@ class _HeroCard extends StatelessWidget {
                     Text(
                       'Đọc báo bằng URL',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.86),
+                        color: Colors.white.withValues(alpha: 0.92),
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
@@ -616,9 +630,10 @@ class _HeroCard extends StatelessWidget {
                     Text(
                       voiceText,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.90),
+                        color: Colors.white.withValues(alpha: 0.94),
                         fontSize: 13.5,
                         height: 1.45,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -830,7 +845,7 @@ class _LoadingPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Positioned.fill(
       child: Container(
-        color: Colors.black.withOpacity(0.18),
+        color: Colors.black.withValues(alpha: 0.18),
         child: Center(
           child: Container(
             width: 230,
@@ -841,7 +856,7 @@ class _LoadingPanel extends StatelessWidget {
               border: Border.all(color: AppColors.cardStroke),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.16),
+                  color: Colors.black.withValues(alpha: 0.16),
                   blurRadius: 18,
                   offset: const Offset(0, 8),
                 ),

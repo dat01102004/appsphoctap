@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/errors/api_exception.dart';
+import '../../core/errors/error_utils.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
@@ -52,12 +52,12 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _announceIntro() async {
     await _speak(
       'Màn hình đăng nhập. '
-          'Bạn cần nhập email và mật khẩu.'
-          'Bạn cũng có thể dùng giọng nói. '
-          'Ví dụ: nói email người dùng a còng gmail chấm com, '
-          'mật khẩu người dùng một hai ba, '
-          'và nói đăng nhập.'
-          'Giữ màn hình 2 giây để sử dụng giọng nói',
+      'Bạn cần nhập email và mật khẩu.'
+      'Bạn cũng có thể dùng giọng nói. '
+      'Ví dụ: nói email người dùng a còng gmail chấm com, '
+      'mật khẩu người dùng một hai ba, '
+      'và nói đăng nhập.'
+      'Giữ màn hình 2 giây để sử dụng giọng nói',
     );
   }
 
@@ -100,6 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     return false;
   }
+
   bool _hasPhrase(String n, String phrase) {
     return ' $n '.contains(' $phrase ');
   }
@@ -142,6 +143,7 @@ class _LoginScreenState extends State<LoginScreen> {
         n.contains('login') ||
         n.contains('sign in');
   }
+
   Future<void> _handleVoiceCommand(String raw) async {
     final n = _norm(raw);
 
@@ -231,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await _speak(
       'Mình chưa hiểu lệnh. '
-          'Bạn có thể nói email cộng nội dung, mật khẩu cộng nội dung, đăng nhập hoặc mở đăng ký. Giữ màn hình 2 giây để sử dụng giọng nói',
+      'Bạn có thể nói email cộng nội dung, mật khẩu cộng nội dung, đăng nhập hoặc mở đăng ký. Giữ màn hình 2 giây để sử dụng giọng nói',
     );
   }
 
@@ -249,9 +251,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String _stripVietnamese(String input) {
     var s = input.toLowerCase().trim();
-    const from = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
+    const from =
+        'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩ'
         'òóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
-    const to = 'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
+    const to =
+        'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiii'
         'ooooooooooooooooouuuuuuuuuuuyyyyyd';
 
     for (int i = 0; i < from.length; i++) {
@@ -328,19 +332,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   String _friendlyAuthError(Object error) {
-    if (error is ApiException) {
-      final msg = error.friendlyMessage().toLowerCase();
-      if (error.statusCode == 401 ||
-          msg.contains('sai email') ||
-          msg.contains('sai mật khẩu')) {
-        return 'Sai email hoặc mật khẩu.';
-      }
-      if (msg.contains('not found') || msg.contains('không tồn tại')) {
-        return 'Tài khoản không tồn tại.';
-      }
-      return error.friendlyMessage();
+    if (error is AuthFriendlyException) {
+      return error.message;
     }
-    return 'Đăng nhập thất bại. Vui lòng kiểm tra lại email hoặc mật khẩu.';
+    return friendlyApiMessage(error, feature: 'auth_login');
   }
 
   String _norm(String input) {
@@ -386,7 +381,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final message = _friendlyAuthError(e);
       if (!mounted) return;
       setState(() => _errorText = message);
-      await _speak(message);
+      if (e is! AuthFriendlyException) {
+        await _speak(message);
+      }
     } finally {
       if (mounted) {
         setState(() => loading = false);
@@ -488,7 +485,9 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _voiceCard() {
     final voice = context.watch<VoiceController>();
     final listeningText = voice.isListening
-        ? (voice.lastWords.trim().isEmpty ? 'Đang nghe...' : voice.lastWords.trim())
+        ? (voice.lastWords.trim().isEmpty
+              ? 'Đang nghe...'
+              : voice.lastWords.trim())
         : 'Nhấn mic hoặc giữ màn hình 2 giây để nói';
 
     return Card(
@@ -514,7 +513,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    voice.isListening ? 'Đang nghe lệnh đăng nhập' : 'Điều khiển bằng giọng nói',
+                    voice.isListening
+                        ? 'Đang nghe lệnh đăng nhập'
+                        : 'Điều khiển bằng giọng nói',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
@@ -525,10 +526,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     listeningText,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.muted,
-                      height: 1.4,
-                    ),
+                    style: const TextStyle(color: AppColors.muted, height: 1.4),
                   ),
                 ],
               ),
@@ -545,7 +543,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 }
               },
               icon: Icon(
-                voice.isListening ? Icons.stop_circle_outlined : Icons.play_circle_outline,
+                voice.isListening
+                    ? Icons.stop_circle_outlined
+                    : Icons.play_circle_outline,
                 color: AppColors.brandBrown,
               ),
             ),
@@ -617,7 +617,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
                   onSubmitted: (_) => _passFocus.requestFocus(),
-                  helper: 'Mẹo voice: nói “email người dùng a còng gmail chấm com”.',
+                  helper:
+                      'Mẹo voice: nói “email người dùng a còng gmail chấm com”.',
                   onTapCard: () async {
                     _emailFocus.requestFocus();
                     await _speak('Ô email đang được chọn.');
@@ -639,7 +640,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       setState(() => _hidePassword = !_hidePassword);
                     },
                     icon: Icon(
-                      _hidePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                      _hidePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
                       color: AppColors.brandBrown,
                     ),
                   ),
@@ -713,7 +716,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                              MaterialPageRoute(
+                                builder: (_) => const RegisterScreen(),
+                              ),
                             );
                           },
                           child: const Text('Đăng ký'),

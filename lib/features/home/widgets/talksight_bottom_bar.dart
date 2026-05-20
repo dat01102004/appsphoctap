@@ -22,7 +22,7 @@ class TalkSightBottomBar extends StatelessWidget {
     required bool active,
     required VoidCallback onPressed,
   }) {
-    final color = active ? AppColors.brandBrown : Colors.black54;
+    final color = active ? AppColors.brandBrownDark : AppColors.muted;
 
     return InkWell(
       onTap: onPressed,
@@ -36,6 +36,8 @@ class TalkSightBottomBar extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: color,
                 fontSize: 11,
@@ -43,6 +45,27 @@ class TalkSightBottomBar extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _cameraItem({required VoidCallback onPressed}) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(18),
+      child: const Padding(
+        padding: EdgeInsets.only(top: 36, bottom: 6),
+        child: Text(
+          'Chụp nhanh',
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
@@ -67,7 +90,7 @@ class TalkSightBottomBar extends StatelessWidget {
               Expanded(
                 child: _item(
                   asset: AppIcons.home,
-                  label: 'Home',
+                  label: 'Trang chủ',
                   active: currentIndex == 0,
                   onPressed: () => onTap(0),
                 ),
@@ -80,13 +103,13 @@ class TalkSightBottomBar extends StatelessWidget {
                   onPressed: () => onTap(1),
                 ),
               ),
-              const SizedBox(width: 74),
+              Expanded(child: _cameraItem(onPressed: () => onTap(2))),
               Expanded(
                 child: _item(
                   asset: AppIcons.tasks,
                   label: 'Tác vụ',
                   active: currentIndex == 2,
-                  onPressed: () => onTap(2),
+                  onPressed: () => onTap(3),
                 ),
               ),
               Expanded(
@@ -94,7 +117,7 @@ class TalkSightBottomBar extends StatelessWidget {
                   asset: AppIcons.settings,
                   label: 'Cài đặt',
                   active: currentIndex == 3,
-                  onPressed: () => onTap(3),
+                  onPressed: () => onTap(4),
                 ),
               ),
             ],

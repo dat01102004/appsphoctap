@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  static const brandBrown = Color(0xFF8B6A2F);
-  static const bgBeige = Color(0xFFF4E9D8);
-  static const card = Color(0xFFF9F4EC);
-  static const cardStroke = Color(0xFFD9C8AE);
+  static const brandBrown = Color(0xFF7A4F13);
+  static const brandBrownDark = Color(0xFF56310A);
+  static const bgBeige = Color(0xFFF3E8D8);
+  static const card = Color(0xFFFFF9F0);
+  static const cardStroke = Color(0xFFC49A5A);
 
-  static const textDark = Color(0xFF1A1A1A);
-  static const muted = Color(0xFF7A7A7A);
+  static const textDark = Color(0xFF1F1A14);
+  static const muted = Color(0xFF5F554A);
+  static const danger = Color(0xFFB3261E);
 }

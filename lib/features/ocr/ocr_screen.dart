@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/errors/error_utils.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/voice/global_voice_intent.dart';
@@ -632,11 +633,9 @@ class _OcrScreenState extends State<OcrScreen> {
       }
       await Future.delayed(const Duration(milliseconds: 500));
       await _askNextAction();
-    } catch (_) {
-      await _speakWithPlayer(
-        'CĂ³ lá»—i khi quĂ©t chá»¯. Báº¡n thá»­ láº¡i nhĂ©.',
-        title: 'OCR',
-      );
+    } catch (e) {
+      final message = friendlyApiMessage(e, feature: 'ocr');
+      _player.setNow('OCR', message, newDetails: message);
       await Future.delayed(const Duration(milliseconds: 600));
       await _askSource();
     }

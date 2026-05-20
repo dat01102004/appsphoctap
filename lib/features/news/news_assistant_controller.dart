@@ -40,6 +40,7 @@ class NewsAssistantController extends ChangeNotifier {
   NewsStage stage = NewsStage.idle;
   List<NewsItem> items = [];
   bool micArmed = false;
+  String? errorMessage;
 
   String _lastPromptNorm = '';
   bool _openingArticle = false;
@@ -83,6 +84,7 @@ class NewsAssistantController extends ChangeNotifier {
   Future<void> startTop() async {
     stage = NewsStage.listing;
     micArmed = false;
+    errorMessage = null;
     notifyListeners();
 
     try {
@@ -104,15 +106,19 @@ class NewsAssistantController extends ChangeNotifier {
 
       await _speakHeadlinesAndThenListen();
     } catch (e) {
+      final message = friendlyApiMessage(e, feature: 'news_list');
       stage = NewsStage.idle;
+      micArmed = false;
+      errorMessage = message;
       notifyListeners();
-      await tts.speak(ErrorUtils.message(e));
+      await tts.speak(message);
     }
   }
 
   Future<void> startSearch(String q) async {
     stage = NewsStage.listing;
     micArmed = false;
+    errorMessage = null;
     notifyListeners();
 
     try {
@@ -137,9 +143,12 @@ class NewsAssistantController extends ChangeNotifier {
       await tts.speak('Ok, mình tìm tin về $q.');
       await _speakHeadlinesAndThenListen();
     } catch (e) {
+      final message = friendlyApiMessage(e, feature: 'news_search');
       stage = NewsStage.idle;
+      micArmed = false;
+      errorMessage = message;
       notifyListeners();
-      await tts.speak(ErrorUtils.message(e));
+      await tts.speak(message);
     }
   }
 
@@ -148,6 +157,7 @@ class NewsAssistantController extends ChangeNotifier {
     stage = NewsStage.idle;
     items = [];
     micArmed = false;
+    errorMessage = null;
     _openingArticle = false;
     notifyListeners();
 
@@ -165,6 +175,7 @@ class NewsAssistantController extends ChangeNotifier {
 
     stage = NewsStage.idle;
     micArmed = false;
+    errorMessage = null;
     _openingArticle = false;
 
     if (clearItems) {
@@ -544,6 +555,7 @@ class NewsAssistantController extends ChangeNotifier {
 
     stage = NewsStage.reading;
     micArmed = false;
+    errorMessage = null;
     notifyListeners();
 
     try {
@@ -588,11 +600,13 @@ class NewsAssistantController extends ChangeNotifier {
         await onArticleFinished();
       }
     } catch (e) {
+      final message = friendlyApiMessage(e, feature: 'news_read');
       stage = NewsStage.waitingChoice;
       micArmed = false;
+      errorMessage = message;
       notifyListeners();
 
-      await tts.speak('Có lỗi khi mở bài. ${ErrorUtils.message(e)}');
+      await tts.speak(message);
       await Future.delayed(const Duration(milliseconds: 600));
 
       if (stage == NewsStage.waitingChoice) {

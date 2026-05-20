@@ -32,11 +32,12 @@ class HomeTab extends StatelessWidget {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.cardStroke),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -48,25 +49,25 @@ class HomeTab extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: AppColors.bgBeige.withValues(alpha: 0.5),
                     shape: BoxShape.circle,
                   ),
-                  child: AppIcon(asset, size: 36, color: AppColors.brandBrown),
+                  child: AppIcon(asset, size: 32, color: AppColors.brandBrown),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 10),
                 Text(
                   title,
                   style: const TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
-                    letterSpacing: -0.2,
+                    height: 1.15,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -74,10 +75,13 @@ class HomeTab extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      color: Colors.black.withValues(alpha: 0.4),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.muted,
                       fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w700,
+                      height: 1.2,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -110,11 +114,12 @@ class HomeTab extends StatelessWidget {
         // Mic Card
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.card,
             borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppColors.cardStroke),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 15,
                 offset: const Offset(0, 5),
               ),
@@ -137,7 +142,9 @@ class HomeTab extends StatelessWidget {
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Icon(
-                        isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                        isListening
+                            ? Icons.mic_rounded
+                            : Icons.mic_none_rounded,
                         color: Colors.white,
                         size: 24,
                       ),
@@ -159,9 +166,10 @@ class HomeTab extends StatelessWidget {
                             micSub,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.black.withValues(alpha: 0.5),
+                            style: const TextStyle(
+                              color: AppColors.muted,
                               fontSize: 13,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
@@ -170,7 +178,7 @@ class HomeTab extends StatelessWidget {
                     Icon(
                       Icons.arrow_forward_ios_rounded,
                       size: 14,
-                      color: Colors.black.withValues(alpha: 0.2),
+                      color: AppColors.muted,
                     ),
                   ],
                 ),
@@ -179,21 +187,25 @@ class HomeTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        
+
         // Profile Card
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: AppColors.card,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.cardStroke.withValues(alpha: 0.5)),
+            border: Border.all(color: AppColors.cardStroke),
           ),
           child: Row(
             children: [
               CircleAvatar(
                 radius: 26,
-                backgroundColor: AppColors.brandBrown.withValues(alpha: 0.1),
-                child: const Icon(Icons.person_rounded, color: AppColors.brandBrown, size: 28),
+                backgroundColor: AppColors.cardStroke.withValues(alpha: 0.65),
+                child: const Icon(
+                  Icons.person_rounded,
+                  color: AppColors.brandBrown,
+                  size: 28,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -201,35 +213,50 @@ class HomeTab extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      primaryText!,
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                      primaryText,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       secondaryText,
-                      style: TextStyle(color: Colors.black.withValues(alpha: 0.5), fontSize: 13),
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),
               ),
               if (!auth.loggedIn)
                 ElevatedButton(
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.brandBrown,
                     foregroundColor: Colors.white,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                   ),
-                  child: const Text('Đăng nhập', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'Đăng nhập',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
             ],
           ),
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // Grid Menu
         GridView.count(
           crossAxisCount: 2,
@@ -237,25 +264,34 @@ class HomeTab extends StatelessWidget {
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 16,
           crossAxisSpacing: 16,
-          childAspectRatio: 1.05,
+          childAspectRatio: 0.95,
           children: [
             _modernTile(
               asset: AppIcons.ocr,
               title: 'Quét chữ',
               subtitle: 'Nhận diện văn bản',
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OcrScreen())),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const OcrScreen()),
+              ),
             ),
             _modernTile(
               asset: AppIcons.image,
               title: 'Mô tả ảnh',
               subtitle: 'Xem nội dung ảnh',
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CaptionScreen())),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CaptionScreen()),
+              ),
             ),
             _modernTile(
               asset: AppIcons.url,
               title: 'Đọc báo',
               subtitle: 'Tin tức mới nhất',
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NewsAssistantScreen())),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NewsAssistantScreen()),
+              ),
             ),
             _modernTile(
               asset: AppIcons.camera,

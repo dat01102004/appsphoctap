@@ -16,10 +16,7 @@ import '../../voice/voice_controller.dart';
 class HistoryTab extends StatefulWidget {
   final bool isActive;
 
-  const HistoryTab({
-    super.key,
-    required this.isActive,
-  });
+  const HistoryTab({super.key, required this.isActive});
 
   @override
   State<HistoryTab> createState() => _HistoryTabState();
@@ -72,17 +69,17 @@ class _HistoryTabState extends State<HistoryTab> {
   Future<void> _announceGuest() async {
     await _speak(
       'Đây là màn hình lịch sử. '
-          'Bạn đang ở chế độ khách nên chưa thể xem lịch sử đã lưu. '
-          'Bạn có thể nói đăng nhập hoặc đăng ký.',
+      'Bạn đang ở chế độ khách nên chưa thể xem lịch sử đã lưu. '
+      'Bạn có thể nói đăng nhập hoặc đăng ký.',
     );
   }
 
   Future<void> _announceLoggedIn() async {
     await _speak(
       'Màn hình lịch sử. '
-          'Bạn có thể nói tất cả, quét chữ, mô tả ảnh, đọc báo, tải lại, '
-          'mở mục 1, đọc mục 1 hoặc xóa mục 1. '
-          'Bạn cũng có thể giữ màn hình 2 giây để bật mic.',
+      'Bạn có thể nói tất cả, quét chữ, mô tả ảnh, đọc báo, tải lại, '
+      'mở mục 1, đọc mục 1 hoặc xóa mục 1. '
+      'Bạn cũng có thể giữ màn hình 2 giây để bật mic.',
     );
   }
 
@@ -193,7 +190,9 @@ class _HistoryTabState extends State<HistoryTab> {
 
       final item = items[index - 1] as HistoryItem;
 
-      if (n.contains('xoa muc') || n.contains('xoa so') || n.startsWith('xoa ')) {
+      if (n.contains('xoa muc') ||
+          n.contains('xoa so') ||
+          n.startsWith('xoa ')) {
         await controller.remove(item.id);
         return;
       }
@@ -203,13 +202,13 @@ class _HistoryTabState extends State<HistoryTab> {
         return;
       }
 
-      if (n.contains('mo muc') || n.contains('xem muc') || n.startsWith('mo ')) {
+      if (n.contains('mo muc') ||
+          n.contains('xem muc') ||
+          n.startsWith('mo ')) {
         if (!mounted) return;
         await Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => HistoryDetailScreen(item: item),
-          ),
+          MaterialPageRoute(builder: (_) => HistoryDetailScreen(item: item)),
         );
         return;
       }
@@ -416,9 +415,7 @@ class _HistoryTabState extends State<HistoryTab> {
       decoration: BoxDecoration(
         color: AppColors.bgBeige,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: AppColors.cardStroke.withValues(alpha: 0.75),
-        ),
+        border: Border.all(color: AppColors.cardStroke.withValues(alpha: 0.75)),
       ),
       alignment: Alignment.center,
       child: Icon(
@@ -434,8 +431,8 @@ class _HistoryTabState extends State<HistoryTab> {
 
     final subtitle = voice.isListening
         ? (voice.lastWords.trim().isEmpty
-        ? 'Đang nghe...'
-        : voice.lastWords.trim())
+              ? 'Đang nghe...'
+              : voice.lastWords.trim())
         : 'Nhấn mic hoặc giữ màn hình 2 giây để điều khiển lịch sử';
 
     return Card(
@@ -474,10 +471,7 @@ class _HistoryTabState extends State<HistoryTab> {
                     subtitle,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.muted,
-                      height: 1.4,
-                    ),
+                    style: const TextStyle(color: AppColors.muted, height: 1.4),
                   ),
                 ],
               ),
@@ -488,13 +482,13 @@ class _HistoryTabState extends State<HistoryTab> {
               onPressed: !widget.isActive
                   ? null
                   : () async {
-                if (voice.isListening) {
-                  _listenEpoch++;
-                  await voice.stop();
-                } else {
-                  await _startVoice();
-                }
-              },
+                      if (voice.isListening) {
+                        _listenEpoch++;
+                        await voice.stop();
+                      } else {
+                        await _startVoice();
+                      }
+                    },
               icon: Icon(
                 voice.isListening
                     ? Icons.stop_circle_outlined
@@ -514,7 +508,7 @@ class _HistoryTabState extends State<HistoryTab> {
     return ChoiceChip(
       label: Text(label),
       selected: selected,
-      selectedColor: AppColors.cardStroke.withValues(alpha: 0.55),
+      selectedColor: AppColors.cardStroke.withValues(alpha: 0.78),
       labelStyle: TextStyle(
         fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
         color: AppColors.textDark,
@@ -644,9 +638,7 @@ class _HistoryTabState extends State<HistoryTab> {
         onTap: () async {
           await Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) => HistoryDetailScreen(item: item),
-            ),
+            MaterialPageRoute(builder: (_) => HistoryDetailScreen(item: item)),
           );
         },
         child: Padding(
@@ -742,8 +734,9 @@ class _HistoryTabState extends State<HistoryTab> {
               Row(
                 children: [
                   TextButton.icon(
-                    onPressed: () =>
-                        context.read<HistoryController>().speakItem(item.resultText),
+                    onPressed: () => context
+                        .read<HistoryController>()
+                        .speakItem(item.resultText),
                     icon: const Icon(Icons.volume_up_rounded, size: 18),
                     label: const Text('Đọc'),
                   ),
@@ -828,10 +821,7 @@ class _HistoryTabState extends State<HistoryTab> {
                 children: [
                   const Text(
                     'Bộ lọc',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 10),
                   SingleChildScrollView(
@@ -848,8 +838,9 @@ class _HistoryTabState extends State<HistoryTab> {
                         const SizedBox(width: 8),
                         IconButton(
                           tooltip: 'Tải lại',
-                          onPressed: () =>
-                              context.read<HistoryController>().load(type: _type),
+                          onPressed: () => context
+                              .read<HistoryController>()
+                              .load(type: _type),
                           icon: const Icon(Icons.refresh_rounded),
                         ),
                       ],
@@ -891,22 +882,22 @@ class _HistoryTabState extends State<HistoryTab> {
               ),
             )
           else ...[
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  '${c.items.length} mục',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.muted,
-                  ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '${c.items.length} mục',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted,
                 ),
               ),
-              ...List.generate(
-                c.items.length,
-                    (index) => _historyItemCard(c.items[index] as HistoryItem, index),
-              ),
-            ],
+            ),
+            ...List.generate(
+              c.items.length,
+              (index) => _historyItemCard(c.items[index] as HistoryItem, index),
+            ),
+          ],
         ],
       ),
     );
