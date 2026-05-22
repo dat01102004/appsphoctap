@@ -180,11 +180,17 @@ class _SettingsTabState extends State<SettingsTab> {
 
   Future<void> _previewVoice() async {
     final settings = context.read<SettingsController>().current;
-    await _speak(
-      'Tốc độ ${settings.rate.toStringAsFixed(2)}. '
-      'Âm lượng ${settings.volume.toStringAsFixed(2)}. '
-      'Cao độ ${settings.pitch.toStringAsFixed(2)}.',
-    );
+    try {
+      await _speak(
+        'Tốc độ ${settings.rate.toStringAsFixed(2)}. '
+        'Âm lượng ${settings.volume.toStringAsFixed(2)}. '
+        'Cao độ ${settings.pitch.toStringAsFixed(2)}.',
+      );
+    } catch (error) {
+      final message =
+          context.read<TtsService>().lastErrorMessage ?? error.toString();
+      _showSnack('Chưa phát được giọng API: $message');
+    }
   }
 
   Future<void> _speak(String text) async {
@@ -218,7 +224,13 @@ class _SettingsTabState extends State<SettingsTab> {
   String _displayVoiceName(Map<dynamic, dynamic> voice, int index) {
     final name = (voice['name'] ?? '').toString().trim();
     final locale = (voice['locale'] ?? '').toString().trim();
+    final displayName = (voice['displayName'] ?? '').toString().trim();
+    final source = (voice['source'] ?? '').toString().trim();
     final key = name.toLowerCase();
+
+    if (displayName.isNotEmpty && source.isNotEmpty) {
+      return '$displayName - API';
+    }
 
     const knownVoices = {
       'vi-vn-language': 'Giọng tiếng Việt mặc định',
@@ -688,6 +700,8 @@ class _SettingsTabState extends State<SettingsTab> {
             else
               DropdownButtonFormField<int>(
                 initialValue: _currentVoiceIndex(settings.voice),
+                isExpanded: true,
+                menuMaxHeight: 360,
                 decoration: _inputDecoration(
                   label: 'Chọn giọng đọc',
                   icon: Icons.record_voice_over_rounded,
@@ -695,9 +709,26 @@ class _SettingsTabState extends State<SettingsTab> {
                 items: List.generate(_voices.length, (index) {
                   return DropdownMenuItem<int>(
                     value: index,
-                    child: Text(_displayVoiceName(_voices[index], index)),
+                    child: Text(
+                      _displayVoiceName(_voices[index], index),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   );
                 }),
+                selectedItemBuilder: (context) {
+                  return List.generate(_voices.length, (index) {
+                    return Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _displayVoiceName(_voices[index], index),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    );
+                  });
+                },
                 onChanged: (index) {
                   if (index == null) return;
                   final voice = _voices[index];
