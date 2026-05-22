@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../core/errors/error_utils.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_command_service.dart';
 import '../../core/voice/global_voice_intent.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
 import '../voice/voice_controller.dart';
@@ -205,6 +206,15 @@ class _ReadUrlScreenState extends State<ReadUrlScreen> {
     final intent = GlobalVoiceIntentParser.parse(raw);
 
     switch (intent) {
+      case GlobalVoiceIntent.speedUp:
+      case GlobalVoiceIntent.speedDown:
+      case GlobalVoiceIntent.speedDefault:
+        await context.read<GlobalVoiceCommandService>().handle(
+          raw,
+          speak: (text, title) => _speak(text),
+        );
+        return true;
+
       case GlobalVoiceIntent.stopReading:
         await context.read<VoiceController>().stop();
         await context.read<TtsService>().stop();

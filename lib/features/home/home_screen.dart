@@ -6,6 +6,7 @@ import '../../core/theme/app_icons.dart';
 import '../../core/tts/tts_service.dart';
 import '../../core/widgets/app_icon.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
+import '../../core/voice/global_voice_command_service.dart';
 import '../auth/auth_controller.dart';
 import '../auth/login_screen.dart';
 import '../auth/register_screen.dart';
@@ -144,8 +145,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _startVoiceOnce() async {
-    if (!mounted || _index != 0) return;
+  Future<void> _startVoiceOnce({bool homeOnly = true}) async {
+    if (!mounted || (homeOnly && _index != 0)) return;
 
     final voice = context.read<VoiceController>();
     final epoch = ++_listenEpoch;
@@ -153,7 +154,9 @@ class _HomeScreenState extends State<HomeScreen> {
     await voice.stop();
     await Future.delayed(const Duration(milliseconds: 350));
 
-    if (!mounted || epoch != _listenEpoch || _index != 0) return;
+    if (!mounted || epoch != _listenEpoch || (homeOnly && _index != 0)) {
+      return;
+    }
 
     await voice.start(
       onFinal: (text) async {
@@ -168,14 +171,18 @@ class _HomeScreenState extends State<HomeScreen> {
             title: 'MẮT NÓI',
           );
 
-          if (!mounted || epoch != _listenEpoch || _index != 0) return;
-          await _startVoiceOnce();
+          if (!mounted || epoch != _listenEpoch || (homeOnly && _index != 0)) {
+            return;
+          }
+          await _startVoiceOnce(homeOnly: homeOnly);
           return;
         }
 
         if (_isPromptEcho(normalized)) {
-          if (!mounted || epoch != _listenEpoch || _index != 0) return;
-          await _startVoiceOnce();
+          if (!mounted || epoch != _listenEpoch || (homeOnly && _index != 0)) {
+            return;
+          }
+          await _startVoiceOnce(homeOnly: homeOnly);
           return;
         }
 
@@ -200,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _listenEpoch++;
       await voice.stop();
     } else {
-      await _startVoiceOnce();
+      await _startVoiceOnce(homeOnly: false);
     }
   }
 
@@ -217,17 +224,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
     player.setNow(_lastSpokenTitle, 'Đang nghe...', newDetails: 'Đang nghe...');
 
-    await _startVoiceOnce();
+    await _startVoiceOnce(homeOnly: false);
   }
 
   String _buildHomeResumePrompt() {
     if (_homeResumePromptCount == 0) {
       return 'Bạn đang ở trang chủ. Bạn muốn làm gì tiếp theo? '
-          'Bạn có thể nói: mô tả xung quanh, đọc chữ, đọc báo, lịch sử, cài đặt, tác vụ, chụp nhanh, đăng nhập hoặc đăng ký.';
+          'Bạn có thể nói: mô tả trực tiếp, mô tả xung quanh, đọc chữ, đọc báo, lịch sử, cài đặt, tác vụ, đăng nhập hoặc đăng ký.';
     }
 
     return 'Trang chủ đây rồi. Bạn muốn làm gì tiếp? '
-        'Nói mô tả xung quanh, đọc chữ, đọc báo, lịch sử, cài đặt, tác vụ hoặc chụp nhanh.';
+        'Nói mô tả trực tiếp, mô tả xung quanh, đọc chữ, đọc báo, lịch sử, cài đặt hoặc tác vụ.';
   }
 
   Future<void> _resumeHomeVoice({bool speakPrompt = false}) async {
@@ -513,6 +520,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final intent = GlobalVoiceIntentParser.parse(raw);
 
     switch (intent) {
+      case GlobalVoiceIntent.speedUp:
+      case GlobalVoiceIntent.speedDown:
+      case GlobalVoiceIntent.speedDefault:
+        await context.read<GlobalVoiceCommandService>().handle(
+          raw,
+          speak: (text, title) => _say(text, title: title),
+        );
+        return true;
+
       case GlobalVoiceIntent.home:
         await _goHome();
         return true;
@@ -549,7 +565,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return true;
 
       case GlobalVoiceIntent.camera:
-        await _say('Mở chụp nhanh trực tiếp.', title: 'Chụp nhanh');
+        await _say('Mở mô tả trực tiếp.', title: 'Mô tả trực tiếp');
         if (!mounted) return true;
         await _onCameraPressed();
         return true;
@@ -578,20 +594,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final text = _norm(raw);
     final handledGlobal = await _handleGlobalVoiceIntent(raw);
     if (handledGlobal) return;
-
-    if (text.contains('toc do nhanh')) {
-      final newRate = (tts.rate + 0.1).clamp(0.1, 1.0);
-      await tts.setRate(newRate);
-      await _say('Đã chỉnh tốc độ đọc nhanh hơn.', title: 'Cài đặt');
-      return;
-    }
-
-    if (text.contains('toc do cham')) {
-      final newRate = (tts.rate - 0.1).clamp(0.1, 1.0);
-      await tts.setRate(newRate);
-      await _say('Đã chỉnh tốc độ đọc chậm hơn.', title: 'Cài đặt');
-      return;
-    }
 
     if (text.contains('giong cao')) {
       final newPitch = (tts.pitch + 0.2).clamp(0.5, 2.0);
@@ -793,7 +795,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     await _say(
-      'Mình chưa hiểu lệnh. Bạn thử nói: đăng nhập, đăng ký, đọc báo, quét chữ, mô tả ảnh, xem lịch sử hoặc chụp nhanh.',
+      'Mình chưa hiểu lệnh. Bạn thử nói: đăng nhập, đăng ký, đọc báo, quét chữ, mô tả ảnh, mô tả trực tiếp hoặc xem lịch sử.',
       title: 'MẮT NÓI',
     );
 

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../data/models/settings_model.dart';
 
 class PlayerSettingsSheet extends StatefulWidget {
   const PlayerSettingsSheet({super.key});
@@ -49,8 +50,8 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
           Text("Tốc độ: ${rate.toStringAsFixed(2)}"),
           Slider(
             value: rate,
-            min: 0.1,
-            max: 1.0,
+            min: SettingsModel.minRate,
+            max: SettingsModel.maxRate,
             onChanged: (v) async {
               setState(() => rate = v);
               await tts.setRate(v);
@@ -60,8 +61,8 @@ class _PlayerSettingsSheetState extends State<PlayerSettingsSheet> {
           Text("Ngữ điệu (pitch): ${pitch.toStringAsFixed(2)}"),
           Slider(
             value: pitch,
-            min: 0.7,
-            max: 1.4,
+            min: SettingsModel.minPitch,
+            max: SettingsModel.maxPitch,
             onChanged: (v) async {
               setState(() => pitch = v);
               await tts.setPitch(v);

@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../../core/errors/error_utils.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_command_service.dart';
 import '../../core/voice/global_voice_intent.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
 import '../../data/services/vision_api.dart';
@@ -119,8 +120,8 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
         if (!mounted) return;
 
         await _speak(
-          'Bạn cần cấp quyền camera để dùng chụp nhanh.',
-          title: 'Chụp nhanh',
+          'Bạn cần cấp quyền camera để dùng mô tả trực tiếp.',
+          title: 'Mô tả trực tiếp',
         );
 
         if (!mounted) return;
@@ -135,7 +136,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
 
         await _speak(
           'Thiết bị này chưa có camera khả dụng.',
-          title: 'Chụp nhanh',
+          title: 'Mô tả trực tiếp',
         );
 
         if (!mounted) return;
@@ -177,7 +178,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     } catch (_) {
       if (!mounted) return;
 
-      await _speak('Không mở được camera.', title: 'Chụp nhanh');
+      await _speak('Không mở được camera.', title: 'Mô tả trực tiếp');
 
       if (!mounted) return;
       Navigator.pop(context, LiveVisionAction.home);
@@ -203,7 +204,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       });
     }
 
-    await _speak(prompt, title: 'Chụp nhanh');
+    await _speak(prompt, title: 'Mô tả trực tiếp');
 
     if (!mounted) return;
 
@@ -670,6 +671,14 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     final intent = GlobalVoiceIntentParser.parse(raw);
 
     switch (intent) {
+      case GlobalVoiceIntent.speedUp:
+      case GlobalVoiceIntent.speedDown:
+      case GlobalVoiceIntent.speedDefault:
+        await context.read<GlobalVoiceCommandService>().handle(
+          raw,
+          speak: (text, title) => _speak(text, title: title),
+        );
+        return true;
       case GlobalVoiceIntent.stopReading:
         _stopScanLoop(reason: 'ÄĂ£ táº¡m dá»«ng');
         await _stopSpeechImmediate();
@@ -741,7 +750,7 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
   }
 
   Future<void> _speakHelp() async {
-    await _speak(_helpText, title: 'Chụp nhanh');
+    await _speak(_helpText, title: 'Mô tả trực tiếp');
   }
 
   Future<void> _onHoldToListen() async {
@@ -752,7 +761,8 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
     return n.contains('thoat') ||
         n.contains('dong') ||
         n.contains('tat camera') ||
-        n.contains('dung chup nhanh');
+        n.contains('dung chup nhanh') ||
+        n.contains('dung mo ta truc tiep');
   }
 
   bool _isPauseCommand(String n) {

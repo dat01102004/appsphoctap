@@ -57,13 +57,13 @@ class TalkSightBottomBar extends StatelessWidget {
       child: const Padding(
         padding: EdgeInsets.only(top: 36, bottom: 6),
         child: Text(
-          'Chụp nhanh',
+          'Mô tả trực tiếp',
           textAlign: TextAlign.center,
-          maxLines: 1,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: AppColors.muted,
-            fontSize: 11,
+            fontSize: 10.5,
             fontWeight: FontWeight.w700,
           ),
         ),

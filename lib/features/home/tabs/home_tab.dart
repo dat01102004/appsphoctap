@@ -295,7 +295,7 @@ class HomeTab extends StatelessWidget {
             ),
             _modernTile(
               asset: AppIcons.camera,
-              title: 'Chụp nhanh',
+              title: 'Mô tả trực tiếp',
               subtitle: 'Trực tiếp 24/7',
               onTap: onOpenCameraSheet,
             ),

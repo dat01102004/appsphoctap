@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/tts/tts_service.dart';
+import '../../../core/voice/global_voice_command_service.dart';
 import '../../../core/widgets/hold_to_listen_layer.dart';
+import '../../../data/models/settings_model.dart';
 import '../../auth/auth_controller.dart';
 import '../../auth/edit_profile_screen.dart';
 import '../../auth/login_screen.dart';
@@ -107,15 +109,10 @@ class _SettingsTabState extends State<SettingsTab> {
       return;
     }
 
-    if (text.contains('toc do nhanh')) {
-      await settings.setRate(1.0);
-      await _speak('Đã chỉnh tốc độ đọc nhanh.');
-      return;
-    }
-
-    if (text.contains('toc do cham')) {
-      await settings.setRate(0.55);
-      await _speak('Đã chỉnh tốc độ đọc chậm.');
+    if (await context.read<GlobalVoiceCommandService>().handle(
+      raw,
+      speak: (message, title) => _speak(message),
+    )) {
       return;
     }
 
@@ -185,7 +182,8 @@ class _SettingsTabState extends State<SettingsTab> {
     final settings = context.read<SettingsController>().current;
     await _speak(
       'Tốc độ ${settings.rate.toStringAsFixed(2)}. '
-      'Âm lượng ${settings.volume.toStringAsFixed(2)}.',
+      'Âm lượng ${settings.volume.toStringAsFixed(2)}. '
+      'Cao độ ${settings.pitch.toStringAsFixed(2)}.',
     );
   }
 
@@ -630,8 +628,8 @@ class _SettingsTabState extends State<SettingsTab> {
               title: 'Tốc độ đọc',
               valueText: settings.rate.toStringAsFixed(2),
               value: settings.rate,
-              min: 0.1,
-              max: 1.0,
+              min: SettingsModel.minRate,
+              max: SettingsModel.maxRate,
               onChanged: controller.setRate,
             ),
             const SizedBox(height: 10),
@@ -643,6 +641,16 @@ class _SettingsTabState extends State<SettingsTab> {
               min: 0.0,
               max: 1.0,
               onChanged: controller.setVolume,
+            ),
+            const SizedBox(height: 10),
+            _SliderRow(
+              icon: Icons.graphic_eq_rounded,
+              title: 'Cao độ giọng đọc',
+              valueText: settings.pitch.toStringAsFixed(2),
+              value: settings.pitch,
+              min: SettingsModel.minPitch,
+              max: SettingsModel.maxPitch,
+              onChanged: controller.setPitch,
             ),
             const SizedBox(height: 16),
             if (_voices.isEmpty)

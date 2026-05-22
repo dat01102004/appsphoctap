@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/tts/tts_service.dart';
+import 'core/voice/global_voice_command_service.dart';
 import 'data/services/api_client.dart';
 import 'data/services/auth_api.dart';
 import 'data/services/history_api.dart';
@@ -49,6 +50,12 @@ class TalkSightApp extends StatelessWidget {
         Provider.value(value: historyApi),
         Provider.value(value: newsApi),
         Provider.value(value: settingsApi),
+        ChangeNotifierProvider(
+          create: (_) => SettingsController(settingsApi, storage, tts)..init(),
+        ),
+        Provider(
+          create: (ctx) => GlobalVoiceCommandService(ctx.read(), ctx.read()),
+        ),
         ChangeNotifierProvider(create: (_) => VoiceController()),
         ChangeNotifierProvider(
           create: (ctx) => NewsAssistantController(
@@ -56,10 +63,8 @@ class TalkSightApp extends StatelessWidget {
             ctx.read(),
             ctx.read(),
             ctx.read(),
+            ctx.read(),
           ),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => SettingsController(settingsApi, storage, tts)..init(),
         ),
         ChangeNotifierProvider(create: (_) => PlayerController()),
         ChangeNotifierProvider(

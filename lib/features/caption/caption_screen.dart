@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../core/errors/error_utils.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_command_service.dart';
 import '../../core/voice/global_voice_intent.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
 import '../auth/auth_controller.dart';
@@ -339,6 +340,14 @@ class _CaptionScreenState extends State<CaptionScreen> {
     final intent = GlobalVoiceIntentParser.parse(raw);
 
     switch (intent) {
+      case GlobalVoiceIntent.speedUp:
+      case GlobalVoiceIntent.speedDown:
+      case GlobalVoiceIntent.speedDefault:
+        await context.read<GlobalVoiceCommandService>().handle(
+          raw,
+          speak: (text, title) => _speakWithPlayer(text, title: title),
+        );
+        return true;
       case GlobalVoiceIntent.stopReading:
         await _onStopTts();
         await _voice.stop();

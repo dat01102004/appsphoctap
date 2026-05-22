@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
+import '../../data/models/settings_model.dart';
+
 class TtsProgress {
   final String text;
   final int start;
@@ -87,13 +89,13 @@ class TtsService {
 
   Future<void> setRate(double v) async {
     await init();
-    rate = v.clamp(0.1, 1.0).toDouble();
+    rate = v.clamp(SettingsModel.minRate, SettingsModel.maxRate).toDouble();
     await _tts.setSpeechRate(rate);
   }
 
   Future<void> setPitch(double v) async {
     await init();
-    pitch = v;
+    pitch = v.clamp(SettingsModel.minPitch, SettingsModel.maxPitch).toDouble();
     await _tts.setPitch(pitch);
   }
 
@@ -145,11 +147,13 @@ class TtsService {
   Future<void> configure({
     String? voice,
     required double rate,
+    required double pitch,
     required double volume,
     required String language,
   }) async {
     await setLanguage(language);
     await setRate(rate);
+    await setPitch(pitch);
     await setVolume(volume);
     await setVoiceName(voice);
   }

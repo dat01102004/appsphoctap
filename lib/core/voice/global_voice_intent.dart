@@ -3,6 +3,9 @@ enum GlobalVoiceIntent {
   back,
   stopReading,
   repeatReading,
+  speedUp,
+  speedDown,
+  speedDefault,
   settings,
   history,
   caption,
@@ -22,6 +25,9 @@ class GlobalVoiceIntentParser {
 
     if (_isStopReading(text)) return GlobalVoiceIntent.stopReading;
     if (_isRepeatReading(text)) return GlobalVoiceIntent.repeatReading;
+    if (_isSpeedDefault(text)) return GlobalVoiceIntent.speedDefault;
+    if (_isSpeedUp(text)) return GlobalVoiceIntent.speedUp;
+    if (_isSpeedDown(text)) return GlobalVoiceIntent.speedDown;
     if (_isHome(text)) return GlobalVoiceIntent.home;
     if (_isBack(text)) return GlobalVoiceIntent.back;
     if (_isSettings(text)) return GlobalVoiceIntent.settings;
@@ -103,6 +109,50 @@ class GlobalVoiceIntentParser {
         _hasPhrase(text, 'repeat');
   }
 
+  static bool _isSpeedUp(String text) {
+    return _hasPhrase(text, 'tang toc do doc len') ||
+        _hasPhrase(text, 'tang toc do doc') ||
+        _hasPhrase(text, 'tang toc doc len') ||
+        _hasPhrase(text, 'tang toc doc') ||
+        _hasPhrase(text, 'tang len mot xiu') ||
+        _hasPhrase(text, 'tang len 1 xiu') ||
+        _hasPhrase(text, 'nhanh hon mot xiu') ||
+        _hasPhrase(text, 'nhanh hon 1 xiu') ||
+        _hasPhrase(text, 'doc nhanh hon') ||
+        _hasPhrase(text, 'doc nhanh len') ||
+        _hasPhrase(text, 'noi nhanh hon') ||
+        _hasPhrase(text, 'toc do nhanh hon') ||
+        _hasPhrase(text, 'toc do nhanh');
+  }
+
+  static bool _isSpeedDown(String text) {
+    return _hasPhrase(text, 'giam toc do doc xuong') ||
+        _hasPhrase(text, 'giam toc do doc') ||
+        _hasPhrase(text, 'giam toc doc xuong') ||
+        _hasPhrase(text, 'giam toc doc') ||
+        _hasPhrase(text, 'giam xuong mot xiu') ||
+        _hasPhrase(text, 'giam xuong 1 xiu') ||
+        _hasPhrase(text, 'cham lai mot xiu') ||
+        _hasPhrase(text, 'cham lai 1 xiu') ||
+        _hasPhrase(text, 'doc cham lai') ||
+        _hasPhrase(text, 'doc cham hon') ||
+        _hasPhrase(text, 'noi cham lai') ||
+        _hasPhrase(text, 'toc do cham lai') ||
+        _hasPhrase(text, 'toc do cham');
+  }
+
+  static bool _isSpeedDefault(String text) {
+    return _hasPhrase(text, 'toc do doc mac dinh') ||
+        _hasPhrase(text, 'toc doc mac dinh') ||
+        _hasPhrase(text, 'dua toc do doc ve mac dinh') ||
+        _hasPhrase(text, 'dua toc doc ve mac dinh') ||
+        _hasPhrase(text, 'doc nhu binh thuong') ||
+        _hasPhrase(text, 'noi nhu binh thuong') ||
+        _hasPhrase(text, 'toc do binh thuong') ||
+        _hasPhrase(text, 'doc binh thuong') ||
+        _hasPhrase(text, 'binh thuong lai');
+  }
+
   static bool _isSettings(String text) {
     return _hasPhrase(text, 'mo cai dat') ||
         _hasPhrase(text, 'cai dat') ||
@@ -130,7 +180,8 @@ class GlobalVoiceIntentParser {
   }
 
   static bool _isCamera(String text) {
-    return _hasPhrase(text, 'mo ta xung quanh') ||
+    return _hasPhrase(text, 'mo ta truc tiep') ||
+        _hasPhrase(text, 'mo ta xung quanh') ||
         _hasPhrase(text, 'xung quanh') ||
         _hasPhrase(text, 'chup nhanh') ||
         _hasPhrase(text, 'live vision');

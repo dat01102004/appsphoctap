@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/errors/error_utils.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_command_service.dart';
 import '../../core/voice/global_voice_intent.dart';
 import '../../data/models/news_models.dart';
 import '../../data/models/read_url_models.dart';
@@ -35,6 +36,7 @@ class NewsAssistantController extends ChangeNotifier {
   final ReadApi readApi;
   final TtsService tts;
   final VoiceController voice;
+  final GlobalVoiceCommandService globalVoice;
 
   OnHistorySaved? _onHistorySaved;
   NewsStage stage = NewsStage.idle;
@@ -49,7 +51,13 @@ class NewsAssistantController extends ChangeNotifier {
   OpenNewsArticle? _openArticle;
   HandleAppVoiceIntent? _onAppIntent;
 
-  NewsAssistantController(this.newsApi, this.readApi, this.tts, this.voice);
+  NewsAssistantController(
+    this.newsApi,
+    this.readApi,
+    this.tts,
+    this.voice,
+    this.globalVoice,
+  );
 
   bool get active => stage != NewsStage.idle;
 
@@ -248,7 +256,7 @@ class NewsAssistantController extends ChangeNotifier {
 
     await _promptAndListen(
       prompt:
-          'Bạn muốn làm gì tiếp theo? Bạn có thể nói: bài 1, đọc lại danh sách, quét chữ, mô tả ảnh, lịch sử, tác vụ, cài đặt, camera, trang chủ hoặc thoát.',
+          'Bạn muốn làm gì tiếp theo? Bạn có thể nói: bài 1, đọc lại danh sách, quét chữ, mô tả ảnh, mô tả trực tiếp, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
       expectedStage: NewsStage.waitingNextAction,
       listenFn: _listenNextActionWithEpoch,
       settleMs: 1500,
@@ -288,7 +296,7 @@ class NewsAssistantController extends ChangeNotifier {
     if (stage == NewsStage.waitingNextAction) {
       await _promptAndListen(
         prompt:
-            'Bạn muốn làm gì tiếp theo? Bạn có thể nói: bài 1, đọc lại danh sách, quét chữ, mô tả ảnh, lịch sử, tác vụ, cài đặt, camera, trang chủ hoặc thoát.',
+            'Bạn muốn làm gì tiếp theo? Bạn có thể nói: bài 1, đọc lại danh sách, quét chữ, mô tả ảnh, mô tả trực tiếp, lịch sử, tác vụ, cài đặt, trang chủ hoặc thoát.',
         expectedStage: NewsStage.waitingNextAction,
         listenFn: _listenNextActionWithEpoch,
       );
@@ -380,7 +388,7 @@ class NewsAssistantController extends ChangeNotifier {
             epoch == _listenEpoch &&
             stage == NewsStage.waitingNextAction) {
           await tts.speak(
-            'Mình chưa hiểu. Bạn có thể nói quét chữ, mô tả ảnh, lịch sử, tác vụ, cài đặt, camera, trang chủ hoặc bài 1.',
+            'Mình chưa hiểu. Bạn có thể nói quét chữ, mô tả ảnh, mô tả trực tiếp, lịch sử, tác vụ, cài đặt, trang chủ hoặc bài 1.',
           );
           await Future.delayed(const Duration(milliseconds: 500));
           if (epoch == _listenEpoch && stage == NewsStage.waitingNextAction) {
@@ -412,6 +420,11 @@ class NewsAssistantController extends ChangeNotifier {
     final globalIntent = GlobalVoiceIntentParser.parse(raw);
     if (globalIntent != GlobalVoiceIntent.none) {
       switch (globalIntent) {
+        case GlobalVoiceIntent.speedUp:
+        case GlobalVoiceIntent.speedDown:
+        case GlobalVoiceIntent.speedDefault:
+          await globalVoice.handle(raw);
+          return true;
         case GlobalVoiceIntent.home:
           await _dispatchAppIntent(AppVoiceIntent.home);
           return true;
@@ -503,7 +516,7 @@ class NewsAssistantController extends ChangeNotifier {
         await tts.speak('Ok, mình về trang chủ.');
         break;
       case AppVoiceIntent.camera:
-        await tts.speak('Ok, mình mở camera.');
+        await tts.speak('Ok, mình mở mô tả trực tiếp.');
         break;
       case AppVoiceIntent.stop:
         await stop();
@@ -537,7 +550,8 @@ class NewsAssistantController extends ChangeNotifier {
     if (n.contains('trang chu') || n == 'home') {
       return AppVoiceIntent.home;
     }
-    if (n.contains('camera') ||
+    if (n.contains('mo ta truc tiep') ||
+        n.contains('camera') ||
         n.contains('chup nhanh') ||
         n.contains('chup')) {
       return AppVoiceIntent.camera;

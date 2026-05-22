@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_icons.dart';
 import '../../core/tts/tts_service.dart';
+import '../../core/voice/global_voice_command_service.dart';
 import '../../core/voice/global_voice_intent.dart';
 import '../../core/widgets/app_icon.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
@@ -231,6 +232,11 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
     final intent = GlobalVoiceIntentParser.parse(raw);
 
     switch (intent) {
+      case GlobalVoiceIntent.speedUp:
+      case GlobalVoiceIntent.speedDown:
+      case GlobalVoiceIntent.speedDefault:
+        await context.read<GlobalVoiceCommandService>().handle(raw);
+        return true;
       case GlobalVoiceIntent.stopReading:
         await _stopNewsSilently();
         return true;
@@ -474,7 +480,7 @@ class _NewsAssistantScreenState extends State<NewsAssistantScreen> {
                               child: Text(
                                 voice.isListening
                                     ? 'Đang nghe: ${voice.lastWords}'
-                                    : 'Gợi ý: nói “bài 1”, “đọc lại danh sách”, “quét chữ”, “mô tả ảnh”, “lịch sử”, “tác vụ”, “cài đặt”, “camera”. Hoặc giữ màn hình 2 giây để bật mic.',
+                                    : 'Gợi ý: nói “bài 1”, “đọc lại danh sách”, “quét chữ”, “mô tả ảnh”, “mô tả trực tiếp”, “lịch sử”, “tác vụ”, “cài đặt”. Hoặc giữ màn hình 2 giây để bật mic.',
                                 style: const TextStyle(
                                   color: AppColors.muted,
                                   fontWeight: FontWeight.w700,
