@@ -26,7 +26,10 @@ class VisionApi {
     return CaptionResponse.fromJson(res.data);
   }
 
-  Future<OcrResponse> ocrLive(String filePath) async {
+  Future<OcrResponse> ocrLive(
+    String filePath, {
+    bool saveHistory = false,
+  }) async {
     final form = FormData.fromMap({
       "file": await MultipartFile.fromFile(filePath),
     });
@@ -34,15 +37,16 @@ class VisionApi {
     final res = await client.dio.post(
       "/ocr",
       data: form,
-      queryParameters: {
-        "save_history": false,
-      },
+      queryParameters: {"save_history": saveHistory},
     );
 
     return OcrResponse.fromJson(res.data);
   }
 
-  Future<CaptionResponse> captionLive(String filePath) async {
+  Future<CaptionResponse> captionLive(
+    String filePath, {
+    bool saveHistory = false,
+  }) async {
     final form = FormData.fromMap({
       "file": await MultipartFile.fromFile(filePath),
     });
@@ -50,9 +54,7 @@ class VisionApi {
     final res = await client.dio.post(
       "/caption",
       data: form,
-      queryParameters: {
-        "save_history": false,
-      },
+      queryParameters: {"save_history": saveHistory},
     );
 
     return CaptionResponse.fromJson(res.data);

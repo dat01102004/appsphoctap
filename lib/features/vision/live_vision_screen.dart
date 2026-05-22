@@ -14,6 +14,8 @@ import '../../core/voice/global_voice_command_service.dart';
 import '../../core/voice/global_voice_intent.dart';
 import '../../core/widgets/hold_to_listen_layer.dart';
 import '../../data/services/vision_api.dart';
+import '../auth/auth_controller.dart';
+import '../history/history_controller.dart';
 import '../player/player_controller.dart';
 import '../voice/voice_controller.dart';
 
@@ -362,16 +364,22 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
       final api = context.read<VisionApi>();
 
       String resultText = '';
+      int? historyId;
+      String? historyType;
 
       if (_mode == _LiveVisionMode.ocr) {
-        final res = await api.ocrLive(shot.path);
+        final res = await api.ocrLive(shot.path, saveHistory: true);
+        historyId = res.historyId;
+        historyType = 'ocr';
 
         resultText = _cleanResult(
           res.text,
           fallback: 'Chưa thấy chữ rõ để đọc.',
         );
       } else {
-        final res = await api.captionLive(shot.path);
+        final res = await api.captionLive(shot.path, saveHistory: true);
+        historyId = res.historyId;
+        historyType = 'caption';
 
         resultText = _cleanResult(
           res.caption,
@@ -394,6 +402,8 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
         _preview(resultText),
         newDetails: resultText,
       );
+
+      await _reloadHistoryIfNeeded(historyId, historyType);
 
       if (forceSpeak || (_autoSpeak && _shouldAutoSpeak(resultText))) {
         await _speak(resultText, title: _screenTitle);
@@ -420,6 +430,17 @@ class _LiveVisionScreenState extends State<LiveVisionScreen> {
 
       _busy = false;
     }
+  }
+
+  Future<void> _reloadHistoryIfNeeded(int? historyId, String? type) async {
+    if (historyId == null || type == null) return;
+
+    try {
+      final loggedIn = context.read<AuthController>().loggedIn;
+      if (!loggedIn) return;
+
+      await context.read<HistoryController>().load(type: type, announce: false);
+    } catch (_) {}
   }
 
   Future<_FrameSignature> _makeFrameSignature(String path) async {
